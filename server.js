@@ -58,14 +58,20 @@ app.get("/latest", (req, res) => {
       );
 
       latestProducts.push({
-        id: product.id,
-        name: product.name,
-        category: product.category,
-        lowestPrice: lowestPriceEntry.price,
-        lowestPriceMerchant:
-          lowestPriceEntry.merchant,
-        lastUpdated: latestSnapshot.date
-      });
+  id: product.id,
+  name: product.name,
+  category: product.category,
+  lowestPrice: lowestPriceEntry.price,
+  lowestPriceMerchant: lowestPriceEntry.merchant,
+  lastUpdated: latestSnapshot.date,
+
+  allPrices: prices
+    .sort((a, b) => a.price - b.price)
+    .map(price => ({
+      merchant: price.merchant,
+      price: price.price
+    }))
+});
     }
 
     res.json(latestProducts);

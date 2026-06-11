@@ -47,6 +47,47 @@
           "date": "6/10/2026, 12:17:42 PM"
         }
       ]
+    },
+    {
+      "timestamp": 1781186601280,
+      "date": "6/11/2026, 9:03:21 AM",
+      "prices": [
+        {
+          "category": "CPU",
+          "merchant": "Amazon",
+          "price": 176,
+          "timestamp": 1781186601114,
+          "date": "6/11/2026, 9:03:21 AM"
+        },
+        {
+          "category": "CPU",
+          "merchant": "B&H",
+          "price": 194.99,
+          "timestamp": 1781186601114,
+          "date": "6/11/2026, 9:03:21 AM"
+        },
+        {
+          "category": "CPU",
+          "merchant": "Newegg",
+          "price": 219,
+          "timestamp": 1781186601114,
+          "date": "6/11/2026, 9:03:21 AM"
+        },
+        {
+          "category": "CPU",
+          "merchant": "Best Buy",
+          "price": 220,
+          "timestamp": 1781186601114,
+          "date": "6/11/2026, 9:03:21 AM"
+        },
+        {
+          "category": "CPU",
+          "merchant": "MemoryC",
+          "price": 232.06,
+          "timestamp": 1781186601114,
+          "date": "6/11/2026, 9:03:21 AM"
+        }
+      ]
     }
   ],
   "cpu_2": [
@@ -90,6 +131,54 @@
           "date": "6/10/2026, 12:17:42 PM"
         }
       ]
+    },
+    {
+      "timestamp": 1781186601639,
+      "date": "6/11/2026, 9:03:21 AM",
+      "prices": [
+        {
+          "category": "CPU",
+          "merchant": "Amazon",
+          "price": 375.72,
+          "timestamp": 1781186601627,
+          "date": "6/11/2026, 9:03:21 AM"
+        },
+        {
+          "category": "CPU",
+          "merchant": "B&H",
+          "price": 376.99,
+          "timestamp": 1781186601627,
+          "date": "6/11/2026, 9:03:21 AM"
+        },
+        {
+          "category": "CPU",
+          "merchant": "Newegg",
+          "price": 389,
+          "timestamp": 1781186601627,
+          "date": "6/11/2026, 9:03:21 AM"
+        },
+        {
+          "category": "CPU",
+          "merchant": "Walmart",
+          "price": 389,
+          "timestamp": 1781186601627,
+          "date": "6/11/2026, 9:03:21 AM"
+        },
+        {
+          "category": "CPU",
+          "merchant": "Best Buy",
+          "price": 391,
+          "timestamp": 1781186601627,
+          "date": "6/11/2026, 9:03:21 AM"
+        },
+        {
+          "category": "CPU",
+          "merchant": "MemoryC",
+          "price": 455.68,
+          "timestamp": 1781186601627,
+          "date": "6/11/2026, 9:03:21 AM"
+        }
+      ]
     }
   ],
   "cpu_3": [
@@ -124,6 +213,40 @@
           "price": 550.42,
           "timestamp": 1781111862772,
           "date": "6/10/2026, 12:17:42 PM"
+        }
+      ]
+    },
+    {
+      "timestamp": 1781186601976,
+      "date": "6/11/2026, 9:03:21 AM",
+      "prices": [
+        {
+          "category": "CPU",
+          "merchant": "Best Buy",
+          "price": 377.99,
+          "timestamp": 1781186601970,
+          "date": "6/11/2026, 9:03:21 AM"
+        },
+        {
+          "category": "CPU",
+          "merchant": "Newegg",
+          "price": 378,
+          "timestamp": 1781186601970,
+          "date": "6/11/2026, 9:03:21 AM"
+        },
+        {
+          "category": "CPU",
+          "merchant": "B&H",
+          "price": 389,
+          "timestamp": 1781186601970,
+          "date": "6/11/2026, 9:03:21 AM"
+        },
+        {
+          "category": "CPU",
+          "merchant": "MemoryC",
+          "price": 550.42,
+          "timestamp": 1781186601970,
+          "date": "6/11/2026, 9:03:21 AM"
         }
       ]
     }
