@@ -1,0 +1,24 @@
+const core = require("./buildwise_backend_core");
+
+const DB_FILE = process.env.DB_FILE || "db.json";
+const db = core.readDb(DB_FILE);
+
+console.log("Database summary:");
+console.log(core.getSummary(db));
+
+const targets = core.getScrapeTargets(db, {
+  maxOffers: Number(process.env.MAX_OFFERS || 10),
+  category: process.env.CATEGORY || "",
+  retailer: process.env.RETAILER || ""
+});
+
+console.log("\nSample scrape targets:");
+for (const target of targets.slice(0, 10)) {
+  console.log({
+    retailer_offer_id: target.offer.retailer_offer_id,
+    product_id: target.offer.product_id,
+    retailer_id: target.offer.retailer_id,
+    category_id: target.product.category_id,
+    url: target.scrapeUrl
+  });
+}
