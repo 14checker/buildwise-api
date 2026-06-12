@@ -1,0 +1,378 @@
+const fs = require("fs");
+
+const DEFAULT_DB_FILE = process.env.DB_FILE || "db.json";
+
+function emptyDb() {
+  return {
+    categories: [],
+    brands: [],
+    retailers: [],
+    products: [],
+    retailer_offers: [],
+    price_snapshots: [],
+    users: [],
+    watchlists: [],
+    price_alerts: [],
+    affiliate_clicks: [],
+    scrape_jobs: [],
+    scrape_errors: [],
+    admin_review_queue: []
+  };
+}
+
+function pad(value, width = 2) {
+  return String(value).padStart(width, "0");
+}
+
+function nowBase44DateTime(timestamp = Date.now()) {
+  const d = new Date(timestamp);
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  );
+}
+
+function normalizeKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function isTruthyValue(value) {
+  if (value === true || value === 1) return true;
+  return ["true", "yes", "y", "1", "active", "enabled"].includes(normalizeKey(value));
+}
+
+function isActiveProduct(product) {
+  const status = normalizeKey(product?.status);
+  if (!status) return true;
+  return ["active", "enabled", "live", "published"].includes(status);
+}
+
+function safeNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function readDb(dbFile = DEFAULT_DB_FILE) {
+  if (!fs.existsSync(dbFile)) {
+    throw new Error(`Missing database file: ${dbFile}`);
+  }
+
+  const parsed = JSON.parse(fs.readFileSync(dbFile, "utf8"));
+  const db = { ...emptyDb(), ...parsed };
+
+  validateDb(db);
+  return db;
+}
+
+function writeDb(db, dbFile = DEFAULT_DB_FILE) {
+  validateDb(db);
+  fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
+}
+
+function validateDb(db) {
+  const requiredTables = [
+    "products",
+    "retailers",
+    "retailer_offers",
+    "price_snapshots",
+    "scrape_jobs",
+    "scrape_errors",
+    "admin_review_queue"
+  ];
+
+  for (const table of requiredTables) {
+    if (!Array.isArray(db[table])) {
+      throw new Error(`Missing or invalid Base44 table: ${table}`);
+    }
+  }
+}
+
+function nextSequentialId(rows, field, prefix, width) {
+  let max = 0;
+
+  for (const row of rows || []) {
+    const value = row?.[field];
+    if (!value || typeof value !== "string") continue;
+
+    const match = value.match(new RegExp(`^${prefix}-(\\d+)$`));
+    if (!match) continue;
+
+    max = Math.max(max, Number(match[1]));
+  }
+
+  return `${prefix}-${pad(max + 1, width)}`;
+}
+
+function buildIndexes(db) {
+  return {
+    productsById: new Map(db.products.map(product => [product.product_id, product])),
+    retailersById: new Map(db.retailers.map(retailer => [retailer.retailer_id, retailer])),
+    offersById: new Map(db.retailer_offers.map(offer => [offer.retailer_offer_id, offer]))
+  };
+}
+
+function getScrapeUrl(offer) {
+  return (
+    offer?.source_url ||
+    offer?.scrape_url ||
+    offer?.price_source_url ||
+    offer?.retailer_product_url ||
+    ""
+  );
+}
+
+function getSummary(db) {
+  return {
+    categories: db.categories.length,
+    brands: db.brands.length,
+    products: db.products.length,
+    retailers: db.retailers.length,
+    retailer_offers: db.retailer_offers.length,
+    price_snapshots: db.price_snapshots.length,
+    users: db.users.length,
+    watchlists: db.watchlists.length,
+    price_alerts: db.price_alerts.length,
+    affiliate_clicks: db.affiliate_clicks.length,
+    scrape_jobs: db.scrape_jobs.length,
+    scrape_errors: db.scrape_errors.length,
+    admin_review_queue: db.admin_review_queue.length
+  };
+}
+
+function getScrapeTargets(db, options = {}) {
+  const maxOffers = Number(options.maxOffers ?? 25);
+  const categoryFilter = normalizeKey(options.category || "");
+  const retailerFilter = normalizeKey(options.retailer || "");
+  const includeMissingUrls = Boolean(options.includeMissingUrls ?? true);
+
+  const { productsById, retailersById } = buildIndexes(db);
+
+  let targets = db.retailer_offers
+    .map(offer => {
+      const product = productsById.get(offer.product_id);
+      const retailer = retailersById.get(offer.retailer_id);
+      return {
+        offer,
+        product,
+        retailer,
+        scrapeUrl: getScrapeUrl(offer)
+      };
+    })
+    .filter(target => {
+      const { offer, product, retailer, scrapeUrl } = target;
+      if (!offer || !product || !retailer) return false;
+      if (!isActiveProduct(product)) return false;
+      if (!isTruthyValue(retailer.active)) return false;
+      if (normalizeKey(offer.availability) === "discontinued") return false;
+      if (categoryFilter && normalizeKey(product.category_id) !== categoryFilter) return false;
+      if (retailerFilter && normalizeKey(retailer.retailer_id) !== retailerFilter) return false;
+      if (!includeMissingUrls && !scrapeUrl) return false;
+      return true;
+    });
+
+  targets.sort((a, b) => {
+    const aTime = new Date(a.offer.last_scraped_at || "1970-01-01").getTime();
+    const bTime = new Date(b.offer.last_scraped_at || "1970-01-01").getTime();
+    return aTime - bTime;
+  });
+
+  if (maxOffers > 0) targets = targets.slice(0, maxOffers);
+
+  return targets;
+}
+
+function addPriceSnapshot(db, offer, result, scrapedAt) {
+  const snapshot = {
+    snapshot_id: nextSequentialId(db.price_snapshots, "snapshot_id", "snap", 8),
+    retailer_offer_id: offer.retailer_offer_id,
+    price: Number(result.price),
+    shipping: Number(result.shipping || 0),
+    availability: result.availability || "In Stock",
+    scraped_at: scrapedAt || result.scraped_at || nowBase44DateTime()
+  };
+
+  db.price_snapshots.push(snapshot);
+  return snapshot;
+}
+
+function addScrapeError(db, payload = {}) {
+  const error = {
+    error_id: nextSequentialId(db.scrape_errors, "error_id", "err", 5),
+    retailer_offer_id: payload.retailer_offer_id || null,
+    retailer_id: payload.retailer_id || null,
+    error_type: payload.error_type || "scrape_error",
+    message: String(payload.message || "").slice(0, 1000),
+    occurred_at: payload.occurred_at || nowBase44DateTime(),
+    status: payload.status || "open"
+  };
+
+  db.scrape_errors.push(error);
+  return error;
+}
+
+function addAdminReview(db, payload = {}) {
+  const review = {
+    review_id: nextSequentialId(db.admin_review_queue, "review_id", "review", 5),
+    product_id: payload.product_id || null,
+    retailer_offer_id: payload.retailer_offer_id || null,
+    issue_type: payload.issue_type || "review_required",
+    match_confidence: payload.match_confidence ?? 50,
+    notes: String(payload.notes || "").slice(0, 1000),
+    status: payload.status || "open"
+  };
+
+  db.admin_review_queue.push(review);
+  return review;
+}
+
+function updateScrapeJob(db, retailerId, scrapedAt) {
+  const job = db.scrape_jobs.find(job => job.retailer_id === retailerId);
+  if (job) job.last_run_at = scrapedAt;
+}
+
+function shouldFlagForReview(product, offer, result) {
+  const newPrice = safeNumber(result.price);
+  const oldPrice = safeNumber(offer.current_price);
+  const msrp = safeNumber(product?.msrp);
+
+  if (newPrice === null) {
+    return {
+      flag: true,
+      issue_type: "missing_price",
+      match_confidence: 0,
+      notes: "Scraper returned a non-numeric price."
+    };
+  }
+
+  if (msrp && newPrice > msrp * 3) {
+    return {
+      flag: true,
+      issue_type: "suspicious_high_price",
+      match_confidence: 35,
+      notes: `New price ${newPrice} is more than 3x MSRP ${msrp}.`
+    };
+  }
+
+  if (msrp && newPrice < msrp * 0.2) {
+    return {
+      flag: true,
+      issue_type: "suspicious_low_price",
+      match_confidence: 35,
+      notes: `New price ${newPrice} is less than 20% of MSRP ${msrp}.`
+    };
+  }
+
+  if (oldPrice && Math.abs(newPrice - oldPrice) / oldPrice > 0.5) {
+    return {
+      flag: true,
+      issue_type: "large_price_change",
+      match_confidence: 60,
+      notes: `Price moved from ${oldPrice} to ${newPrice}, which is more than a 50% change.`
+    };
+  }
+
+  return { flag: false };
+}
+
+function applyScrapeResult(db, result = {}) {
+  if (!result.retailer_offer_id) {
+    throw new Error("Missing retailer_offer_id in scraper result.");
+  }
+
+  const { productsById, offersById } = buildIndexes(db);
+  const offer = offersById.get(result.retailer_offer_id);
+  const scrapedAt = result.scraped_at || nowBase44DateTime();
+
+  if (!offer) {
+    const error = addScrapeError(db, {
+      retailer_offer_id: result.retailer_offer_id,
+      retailer_id: result.retailer_id || null,
+      error_type: "unknown_retailer_offer",
+      message: `No retailer_offers row found for ${result.retailer_offer_id}.`,
+      occurred_at: scrapedAt
+    });
+
+    return { status: "error", reason: "unknown_retailer_offer", error };
+  }
+
+  const product = productsById.get(offer.product_id);
+  const reviewCheck = shouldFlagForReview(product, offer, result);
+
+  if (reviewCheck.flag) {
+    const review = addAdminReview(db, {
+      product_id: offer.product_id,
+      retailer_offer_id: offer.retailer_offer_id,
+      issue_type: reviewCheck.issue_type,
+      match_confidence: reviewCheck.match_confidence,
+      notes: reviewCheck.notes
+    });
+
+    const error = addScrapeError(db, {
+      retailer_offer_id: offer.retailer_offer_id,
+      retailer_id: offer.retailer_id,
+      error_type: "admin_review_required",
+      message: reviewCheck.notes,
+      occurred_at: scrapedAt
+    });
+
+    return {
+      status: "review",
+      reason: reviewCheck.issue_type,
+      review,
+      error
+    };
+  }
+
+  offer.current_price = Number(result.price);
+  offer.availability = result.availability || "In Stock";
+  offer.last_scraped_at = scrapedAt;
+
+  const snapshot = addPriceSnapshot(db, offer, { ...result, scraped_at: scrapedAt }, scrapedAt);
+  updateScrapeJob(db, offer.retailer_id, scrapedAt);
+
+  return {
+    status: "updated",
+    retailer_offer_id: offer.retailer_offer_id,
+    product_id: offer.product_id,
+    retailer_id: offer.retailer_id,
+    snapshot_id: snapshot.snapshot_id,
+    price: snapshot.price,
+    availability: snapshot.availability,
+    snapshot
+  };
+}
+
+function applyScrapeFailure(db, payload = {}) {
+  return addScrapeError(db, {
+    retailer_offer_id: payload.retailer_offer_id || null,
+    retailer_id: payload.retailer_id || null,
+    error_type: payload.error_type || "scrape_error",
+    message: payload.message || "Unknown scrape failure.",
+    occurred_at: payload.occurred_at || nowBase44DateTime(),
+    status: payload.status || "open"
+  });
+}
+
+module.exports = {
+  emptyDb,
+  readDb,
+  writeDb,
+  validateDb,
+  buildIndexes,
+  getScrapeTargets,
+  getScrapeUrl,
+  getSummary,
+  applyScrapeResult,
+  applyScrapeFailure,
+  addScrapeError,
+  addAdminReview,
+  nowBase44DateTime,
+  normalizeKey,
+  normalizeText,
+  safeNumber
+};
