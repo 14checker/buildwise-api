@@ -16,7 +16,31 @@ function emptyDb() {
     affiliate_clicks: [],
     scrape_jobs: [],
     scrape_errors: [],
-    admin_review_queue: []
+    admin_review_queue: [],
+    product_groups: [],
+    product_group_members: [],
+    product_similarity_map: [],
+    product_offer_summary: [],
+    discovery_sources: [],
+    discovered_products: [],
+    discovered_offers: [],
+    product_insert_queue: [],
+    component_spec_insert_queue: [],
+    promotion_log: [],
+    data_sources: [],
+    source_request_log: [],
+    source_compliance_log: [],
+    source_terms_reviews: [],
+    affiliate_disclosure_config: null,
+    public_data_policy: null,
+    system_settings: {},
+    change_log: [],
+    alert_queue: [],
+    pipeline_runs: [],
+    data_quality_reports: [],
+    quarantine_records: [],
+    import_export_log: [],
+    system_events: []
   };
 }
 
@@ -140,7 +164,28 @@ function getSummary(db) {
     affiliate_clicks: db.affiliate_clicks.length,
     scrape_jobs: db.scrape_jobs.length,
     scrape_errors: db.scrape_errors.length,
-    admin_review_queue: db.admin_review_queue.length
+    admin_review_queue: db.admin_review_queue.length,
+    product_groups: Array.isArray(db.product_groups) ? db.product_groups.length : 0,
+    product_group_members: Array.isArray(db.product_group_members) ? db.product_group_members.length : 0,
+    product_similarity_map: Array.isArray(db.product_similarity_map) ? db.product_similarity_map.length : 0,
+    product_offer_summary: Array.isArray(db.product_offer_summary) ? db.product_offer_summary.length : 0,
+    discovery_sources: Array.isArray(db.discovery_sources) ? db.discovery_sources.length : 0,
+    discovered_products: Array.isArray(db.discovered_products) ? db.discovered_products.length : 0,
+    discovered_offers: Array.isArray(db.discovered_offers) ? db.discovered_offers.length : 0,
+    product_insert_queue: Array.isArray(db.product_insert_queue) ? db.product_insert_queue.length : 0,
+    component_spec_insert_queue: Array.isArray(db.component_spec_insert_queue) ? db.component_spec_insert_queue.length : 0,
+    promotion_log: Array.isArray(db.promotion_log) ? db.promotion_log.length : 0,
+    data_sources: Array.isArray(db.data_sources) ? db.data_sources.length : 0,
+    source_request_log: Array.isArray(db.source_request_log) ? db.source_request_log.length : 0,
+    source_compliance_log: Array.isArray(db.source_compliance_log) ? db.source_compliance_log.length : 0,
+    source_terms_reviews: Array.isArray(db.source_terms_reviews) ? db.source_terms_reviews.length : 0,
+    change_log: Array.isArray(db.change_log) ? db.change_log.length : 0,
+    alert_queue: Array.isArray(db.alert_queue) ? db.alert_queue.length : 0,
+    pipeline_runs: Array.isArray(db.pipeline_runs) ? db.pipeline_runs.length : 0,
+    data_quality_reports: Array.isArray(db.data_quality_reports) ? db.data_quality_reports.length : 0,
+    quarantine_records: Array.isArray(db.quarantine_records) ? db.quarantine_records.length : 0,
+    import_export_log: Array.isArray(db.import_export_log) ? db.import_export_log.length : 0,
+    system_events: Array.isArray(db.system_events) ? db.system_events.length : 0
   };
 }
 

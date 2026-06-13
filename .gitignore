@@ -1,1 +1,35 @@
-node_modules
+node_modules/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# local data
+db.json
+db_*.json
+*_db.json
+backups/
+
+# workbook / exports / reports
+*.xlsx
+*.xls
+buildwise_tracker_exports/
+base44_table_exports/
+buildwise_reports/
+*.csv
+
+# runtime
+.buildwise_pipeline.lock
+.cache/
+tmp/
+temp/
+logs/
+*.log
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+.idea/

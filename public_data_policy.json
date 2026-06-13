@@ -1,0 +1,16 @@
+{
+  "public_price_requirements": {
+    "source_terms_status": "approved",
+    "max_age_hours": 24,
+    "requires_non_null_price": true,
+    "requires_non_null_availability": true,
+    "blocked_statuses": ["needs_review", "rejected", "blocked"]
+  },
+  "public_candidate_policy": {
+    "show_discovered_products_publicly": false,
+    "requires_review_status": "promoted"
+  },
+  "accuracy_copy": "Prices and availability are updated regularly and may change at retailer checkout.",
+  "last_reviewed_at": null,
+  "status": "draft"
+}

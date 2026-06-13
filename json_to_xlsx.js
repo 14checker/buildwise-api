@@ -24,7 +24,28 @@ const preferredOrder = [
   "affiliate_clicks",
   "scrape_jobs",
   "scrape_errors",
-  "admin_review_queue"
+  "admin_review_queue",
+  "product_groups",
+  "product_group_members",
+  "product_similarity_map",
+  "product_offer_summary",
+  "discovery_sources",
+  "discovered_products",
+  "discovered_offers",
+  "product_insert_queue",
+  "component_spec_insert_queue",
+  "promotion_log",
+  "data_sources",
+  "source_request_log",
+  "source_compliance_log",
+  "source_terms_reviews",
+  "change_log",
+  "alert_queue",
+  "pipeline_runs",
+  "data_quality_reports",
+  "quarantine_records",
+  "import_export_log",
+  "system_events"
 ];
 
 const tableNames = [
