@@ -1,0 +1,12 @@
+{
+  "default_disclosure": "BuildWise may earn a commission when you buy through links on this site. Prices and availability may change at the retailer.",
+  "placement_required": [
+    "site_footer",
+    "product_pages",
+    "deals_pages",
+    "outbound_buy_buttons",
+    "terms_or_disclosure_page"
+  ],
+  "last_reviewed_at": null,
+  "status": "draft"
+}
