@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const core = require("./buildwise_backend_core");
+const publicSerializers = require("./public_serializers");
 
 const DB_FILE = process.env.DB_FILE || "db.json";
 const EXPORT_DIR = process.env.EXPORT_DIR || "base44_table_exports";
@@ -26,20 +27,6 @@ const INTERNAL_TABLE_LIST = [
   "discovered_products",
   "discovered_offers"
 ];
-const PUBLIC_RETAILER_OFFER_FIELDS = [
-  "retailer_offer_id",
-  "product_id",
-  "retailer_id",
-  "retailer_name",
-  "retailer_domain",
-  "retailer_sku",
-  "retailer_product_url",
-  "current_price",
-  "availability",
-  "condition",
-  "seller_name",
-  "last_scraped_at"
-];
 
 const ALLOWED_TABLES = new Set([...PUBLIC_TABLES, ...(INTERNAL_TABLES ? INTERNAL_TABLE_LIST : [])]);
 const REQUESTED_TABLES = (process.env.TABLES || [...PUBLIC_TABLES, ...(INTERNAL_TABLES ? INTERNAL_TABLE_LIST : [])].join(","))
@@ -60,31 +47,12 @@ function toCsv(rows) {
   return [cols.join(","), ...rows.map(row => cols.map(col => csvEscape(row[col])).join(","))].join("\n");
 }
 
-function pick(row, fields) {
-  return Object.fromEntries(fields.map(field => [field, row?.[field] ?? null]));
-}
-
-function publicRetailers(db) {
-  return (db.retailers || []).map(retailer => pick(retailer, ["retailer_id", "name", "domain", "active"]));
-}
-
-function publicRetailerOffers(db) {
-  const retailersById = new Map((db.retailers || []).map(retailer => [retailer.retailer_id, retailer]));
-
-  return (db.retailer_offers || []).map(offer => {
-    const retailer = retailersById.get(offer.retailer_id) || {};
-    const row = pick(
-      { ...offer, retailer_name: retailer.name || null, retailer_domain: retailer.domain || null },
-      PUBLIC_RETAILER_OFFER_FIELDS
-    );
-    if (EXPORT_AFFILIATE_URLS) row.affiliate_url = offer.affiliate_url ?? null;
-    return row;
-  });
-}
-
 function rowsForExport(db, table) {
-  if (table === "retailers") return publicRetailers(db);
-  if (table === "retailer_offers") return publicRetailerOffers(db);
+  if (PUBLIC_TABLES.includes(table)) {
+    return publicSerializers.rowsForPublicTable(db, table, {
+      exportAffiliateUrls: EXPORT_AFFILIATE_URLS
+    });
+  }
   return db[table];
 }
 
