@@ -4,11 +4,50 @@ const core = require("./buildwise_backend_core");
 
 const DB_FILE = process.env.DB_FILE || "db.json";
 const EXPORT_DIR = process.env.EXPORT_DIR || "base44_table_exports";
+const INTERNAL_TABLES = String(process.env.INTERNAL_TABLES || "false").toLowerCase() === "true";
+const EXPORT_AFFILIATE_URLS = String(process.env.EXPORT_AFFILIATE_URLS || "false").toLowerCase() === "true";
+const WRITE_ENABLED = String(process.env.WRITE || "false").toLowerCase() === "true";
 
-const TABLES = (process.env.TABLES || "products,retailer_offers,price_snapshots,scrape_errors,admin_review_queue,product_insert_queue,component_spec_insert_queue,promotion_log,data_sources,alert_queue")
+const PUBLIC_TABLES = ["products", "retailer_offers", "price_snapshots", "retailers"];
+const INTERNAL_TABLE_LIST = [
+  "scrape_errors",
+  "admin_review_queue",
+  "product_insert_queue",
+  "component_spec_insert_queue",
+  "promotion_log",
+  "data_sources",
+  "alert_queue",
+  "import_export_log",
+  "source_request_log",
+  "source_compliance_log",
+  "source_terms_reviews",
+  "orphan_offers",
+  "orphan_snapshots",
+  "discovered_products",
+  "discovered_offers"
+];
+const PUBLIC_RETAILER_OFFER_FIELDS = [
+  "retailer_offer_id",
+  "product_id",
+  "retailer_id",
+  "retailer_name",
+  "retailer_domain",
+  "retailer_sku",
+  "retailer_product_url",
+  "current_price",
+  "availability",
+  "condition",
+  "seller_name",
+  "last_scraped_at"
+];
+
+const ALLOWED_TABLES = new Set([...PUBLIC_TABLES, ...(INTERNAL_TABLES ? INTERNAL_TABLE_LIST : [])]);
+const REQUESTED_TABLES = (process.env.TABLES || [...PUBLIC_TABLES, ...(INTERNAL_TABLES ? INTERNAL_TABLE_LIST : [])].join(","))
   .split(",")
   .map(s => s.trim())
   .filter(Boolean);
+const BLOCKED_TABLES = REQUESTED_TABLES.filter(table => !ALLOWED_TABLES.has(table));
+const TABLES = REQUESTED_TABLES.filter(table => ALLOWED_TABLES.has(table));
 
 function ensureDir(dir) { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); }
 function csvEscape(value) {
@@ -21,7 +60,39 @@ function toCsv(rows) {
   return [cols.join(","), ...rows.map(row => cols.map(col => csvEscape(row[col])).join(","))].join("\n");
 }
 
+function pick(row, fields) {
+  return Object.fromEntries(fields.map(field => [field, row?.[field] ?? null]));
+}
+
+function publicRetailers(db) {
+  return (db.retailers || []).map(retailer => pick(retailer, ["retailer_id", "name", "domain", "active"]));
+}
+
+function publicRetailerOffers(db) {
+  const retailersById = new Map((db.retailers || []).map(retailer => [retailer.retailer_id, retailer]));
+
+  return (db.retailer_offers || []).map(offer => {
+    const retailer = retailersById.get(offer.retailer_id) || {};
+    const row = pick(
+      { ...offer, retailer_name: retailer.name || null, retailer_domain: retailer.domain || null },
+      PUBLIC_RETAILER_OFFER_FIELDS
+    );
+    if (EXPORT_AFFILIATE_URLS) row.affiliate_url = offer.affiliate_url ?? null;
+    return row;
+  });
+}
+
+function rowsForExport(db, table) {
+  if (table === "retailers") return publicRetailers(db);
+  if (table === "retailer_offers") return publicRetailerOffers(db);
+  return db[table];
+}
+
 function main() {
+  if (BLOCKED_TABLES.length) {
+    console.warn(`Warning: skipped disallowed export tables: ${BLOCKED_TABLES.join(", ")}`);
+  }
+
   const db = core.readDb(DB_FILE);
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0,19);
   const runDir = path.join(EXPORT_DIR, `export_${stamp}`);
@@ -29,14 +100,19 @@ function main() {
 
   const exported = [];
   for (const table of TABLES) {
-    if (!Array.isArray(db[table])) continue;
-    fs.writeFileSync(path.join(runDir, `${table}.csv`), toCsv(db[table]));
-    exported.push({ table, rows: db[table].length });
+    const rows = rowsForExport(db, table);
+    if (!Array.isArray(rows)) continue;
+    fs.writeFileSync(path.join(runDir, `${table}.csv`), toCsv(rows));
+    exported.push({ table, rows: rows.length });
   }
 
-  db.import_export_log = Array.isArray(db.import_export_log) ? db.import_export_log : [];
-  db.import_export_log.push({ export_id: `export-${String(db.import_export_log.length + 1).padStart(6,"0")}`, type: "base44_csv_export", tables: exported.map(e=>e.table).join(","), created_at: core.nowBase44DateTime(), output_dir: runDir });
-  core.writeDb(db, DB_FILE);
+  if (WRITE_ENABLED) {
+    db.import_export_log = Array.isArray(db.import_export_log) ? db.import_export_log : [];
+    db.import_export_log.push({ export_id: `export-${String(db.import_export_log.length + 1).padStart(6,"0")}`, type: "base44_csv_export", tables: exported.map(e=>e.table).join(","), created_at: core.nowBase44DateTime(), output_dir: runDir });
+    core.writeDb(db, DB_FILE);
+  } else {
+    console.log("DRY RUN — export log not written to db.json.");
+  }
 
   console.log("Base44 table export complete.");
   console.log({ output_dir: runDir, exported });
