@@ -12,8 +12,18 @@ const REQUESTED_DRY_RUN = String(process.env.DRY_RUN || "true").toLowerCase() !=
 const WRITE_BLOCKED = !REQUESTED_DRY_RUN && !WRITE_ENABLED;
 const DRY_RUN = REQUESTED_DRY_RUN || !WRITE_ENABLED;
 const MAX_ROWS = Number(process.env.URL_MATCH_MAX_ROWS || 0);
+const URL_MATCH_MIN_SCORE = numberEnv(process.env.URL_MATCH_MIN_SCORE, 60);
 const IMPORT_AFFILIATE_URLS = String(process.env.IMPORT_AFFILIATE_URLS || "false").toLowerCase() === "true";
 const STRIP_TRACKING_PARAMS = String(process.env.STRIP_TRACKING_PARAMS || "true").toLowerCase() === "true";
+
+const MANUAL_OVERRIDE_FIELDS = ["manual_verified", "human_verified", "review_override"];
+const MANUAL_OVERRIDE_VALUES = new Set(["true", "yes", "y", "1"]);
+
+function numberEnv(value, fallback) {
+  if (value === undefined || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 
 const TRACKING_PARAMS = new Set([
   "tag",
@@ -396,6 +406,10 @@ function isApproved(row) {
   return ["approved", "approve", "verified", "replace"].includes(core.normalizeKey(row.review_status || row.status));
 }
 
+function manualOverrideField(row) {
+  return MANUAL_OVERRIDE_FIELDS.find(field => MANUAL_OVERRIDE_VALUES.has(core.normalizeKey(row[field])));
+}
+
 function validateImportRow(row, db, context) {
   const offer = context.offersById.get(row.retailer_offer_id);
   if (!offer) return { ok: false, reason: "unknown_retailer_offer" };
@@ -413,13 +427,38 @@ function validateImportRow(row, db, context) {
 
   if (issue) return { ok: false, reason: issue };
 
+  const staticMatchScore = product ? scoreUrlMatch(product, cleanedUrl) : 0;
+  const overrideField = manualOverrideField(row);
+
+  if (staticMatchScore < URL_MATCH_MIN_SCORE) {
+    if (!overrideField) {
+      return {
+        ok: false,
+        reason: "static_match_score_below_threshold",
+        static_match_score: staticMatchScore,
+        url_match_min_score: URL_MATCH_MIN_SCORE
+      };
+    }
+
+    if (!core.normalizeText(row.notes)) {
+      return {
+        ok: false,
+        reason: "manual_override_requires_notes",
+        static_match_score: staticMatchScore,
+        url_match_min_score: URL_MATCH_MIN_SCORE,
+        manual_override_field: overrideField
+      };
+    }
+  }
+
   return {
     ok: true,
     offer,
     product,
     retailer,
     cleanedUrl,
-    static_match_score: product ? scoreUrlMatch(product, cleanedUrl) : 0
+    static_match_score: staticMatchScore,
+    manual_override_field: overrideField || ""
   };
 }
 
@@ -437,7 +476,11 @@ function runImport() {
   for (const row of approvedRows) {
     const validation = validateImportRow(row, db, context);
     if (!validation.ok) {
-      rejected.push({ ...row, reject_reason: validation.reason });
+      const rejectedRow = { ...row, reject_reason: validation.reason };
+      if (validation.static_match_score !== undefined) rejectedRow.static_match_score = validation.static_match_score;
+      if (validation.url_match_min_score !== undefined) rejectedRow.url_match_min_score = validation.url_match_min_score;
+      if (validation.manual_override_field !== undefined) rejectedRow.manual_override_field = validation.manual_override_field;
+      rejected.push(rejectedRow);
       continue;
     }
 
@@ -478,7 +521,8 @@ function runImport() {
   ensureDir(REPORT_DIR);
   const rejectFile = path.join(REPORT_DIR, `url_match_rejected_${stamp()}.csv`);
   if (rejected.length) {
-    fs.writeFileSync(rejectFile, toCsv(rejected, [...Object.keys(rejected[0])]));
+    const rejectColumns = [...new Set(rejected.flatMap(row => Object.keys(row)))];
+    fs.writeFileSync(rejectFile, toCsv(rejected, rejectColumns));
   }
 
   if (WRITE_BLOCKED) {
