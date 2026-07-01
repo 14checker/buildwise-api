@@ -54,6 +54,8 @@ const PUBLIC_TABLE_FIELDS = {
 };
 
 const VERIFIED_URL_STATUSES = new Set(["verified_api", "verified_manual"]);
+const VERIFIED_PRICE_STATUSES = new Set(["verified", "verified_api", "verified_manual"]);
+const PRICE_FIELDS = ["current_price", "availability", "seller_name", "last_scraped_at"];
 const TRACKING_PARAMS = new Set([
   "tag",
   "ascsubtag",
@@ -89,8 +91,54 @@ function exportProductsWithoutVerifiedOffersEnabled(options = {}) {
   return String(process.env.EXPORT_PRODUCTS_WITHOUT_VERIFIED_OFFERS || "false").toLowerCase() === "true";
 }
 
+function exportUnverifiedPricesEnabled(options = {}) {
+  if (typeof options.exportUnverifiedPrices === "boolean") return options.exportUnverifiedPrices;
+  return String(process.env.EXPORT_UNVERIFIED_PRICES || "false").toLowerCase() === "true";
+}
+
+function exportSeedPriceDataEnabled(options = {}) {
+  if (typeof options.exportSeedPriceData === "boolean") return options.exportSeedPriceData;
+  return String(process.env.EXPORT_SEED_PRICE_DATA || "false").toLowerCase() === "true";
+}
+
 function normalizeKey(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function hasVerifiedPriceStatus(row = {}) {
+  return [
+    row.price_status,
+    row.snapshot_status,
+    row.data_quality_status
+  ].some(status => VERIFIED_PRICE_STATUSES.has(normalizeKey(status)));
+}
+
+function hasSeedPriceData(row = {}) {
+  return /buildwise seed|\bseed\b|\bdemo\b|\btest\b/i.test(String(row.seller_name || ""));
+}
+
+function priceDataAllowed(row = {}, options = {}) {
+  if (exportSeedPriceDataEnabled(options) || exportUnverifiedPricesEnabled(options)) {
+    // Unsafe for production: these flags are only for internal review exports.
+    return true;
+  }
+  return hasVerifiedPriceStatus(row);
+}
+
+function snapshotPriceDataAllowed(snapshot = {}, offer = {}, options = {}) {
+  if (exportSeedPriceDataEnabled(options) || exportUnverifiedPricesEnabled(options)) {
+    // Unsafe for production: these flags are only for internal review exports.
+    return true;
+  }
+  return hasVerifiedPriceStatus(snapshot) || hasVerifiedPriceStatus(offer);
+}
+
+function redactUnverifiedPriceFields(row, offer, options = {}) {
+  if (priceDataAllowed(offer, options)) return row;
+
+  for (const field of PRICE_FIELDS) row[field] = null;
+  if (hasSeedPriceData(offer)) row.condition = null;
+  return row;
 }
 
 function hasUnsafeSearchOrTrackingUrl(value) {
@@ -180,6 +228,7 @@ function publicRetailerOffers(db, options = {}) {
       RETAILER_OFFER_FIELDS
     );
 
+    redactUnverifiedPriceFields(row, offer, options);
     if (affiliateUrlsEnabled(options)) row.affiliate_url = offer.affiliate_url ?? null;
     return row;
   });
@@ -192,6 +241,7 @@ function publicPriceSnapshots(db, options = {}) {
 
   return (db.price_snapshots || [])
     .filter(snapshot => safeOfferIds.has(snapshot.retailer_offer_id))
+    .filter(snapshot => snapshotPriceDataAllowed(snapshot, offersById.get(snapshot.retailer_offer_id) || {}, options))
     .map(snapshot => {
     const offer = offersById.get(snapshot.retailer_offer_id) || {};
     const retailer = retailersById.get(offer.retailer_id) || {};
