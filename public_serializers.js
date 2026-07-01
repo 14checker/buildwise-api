@@ -1,3 +1,5 @@
+const urlQuality = require("./url_quality");
+
 const PRODUCT_FIELDS = [
   "product_id",
   "category_id",
@@ -44,6 +46,30 @@ const PRICE_SNAPSHOT_FIELDS = [
   "scraped_at"
 ];
 
+const PUBLIC_TABLE_FIELDS = {
+  products: PRODUCT_FIELDS,
+  retailers: RETAILER_FIELDS,
+  retailer_offers: RETAILER_OFFER_FIELDS,
+  price_snapshots: PRICE_SNAPSHOT_FIELDS
+};
+
+const VERIFIED_URL_STATUSES = new Set(["verified_api", "verified_manual"]);
+const TRACKING_PARAMS = new Set([
+  "tag",
+  "ascsubtag",
+  "affid",
+  "affiliate",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "ref",
+  "ref_",
+  "source",
+  "campaign"
+]);
+
 function pick(row, fields) {
   return Object.fromEntries(fields.map(field => [field, row?.[field] ?? null]));
 }
@@ -53,8 +79,90 @@ function affiliateUrlsEnabled(options = {}) {
   return String(process.env.EXPORT_AFFILIATE_URLS || "false").toLowerCase() === "true";
 }
 
-function publicProducts(db) {
-  return (db.products || []).map(product => pick(product, PRODUCT_FIELDS));
+function exportUnverifiedOffersEnabled(options = {}) {
+  if (typeof options.exportUnverifiedOffers === "boolean") return options.exportUnverifiedOffers;
+  return String(process.env.EXPORT_UNVERIFIED_OFFERS || "false").toLowerCase() === "true";
+}
+
+function exportProductsWithoutVerifiedOffersEnabled(options = {}) {
+  if (typeof options.exportProductsWithoutVerifiedOffers === "boolean") return options.exportProductsWithoutVerifiedOffers;
+  return String(process.env.EXPORT_PRODUCTS_WITHOUT_VERIFIED_OFFERS || "false").toLowerCase() === "true";
+}
+
+function normalizeKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function hasUnsafeSearchOrTrackingUrl(value) {
+  const parsed = urlQuality.parseUrl(value);
+  if (!parsed) return true;
+
+  const host = urlQuality.normalizeHost(parsed.hostname);
+  const pathname = parsed.pathname.toLowerCase();
+  const searchKeys = [...parsed.searchParams.keys()].map(key => key.toLowerCase());
+
+  if (searchKeys.some(key => key.startsWith("utm_") || TRACKING_PARAMS.has(key))) return true;
+  if (pathname.includes("/search") || pathname.includes("/category")) return true;
+  if (host === "amazon.com" && pathname === "/s") return true;
+  if (host === "bestbuy.com" && pathname === "/site/searchpage.jsp") return true;
+  if (host === "newegg.com" && pathname === "/p/pl") return true;
+  if (host === "microcenter.com" && pathname === "/search/search_results.aspx") return true;
+  if (host === "bhphotovideo.com" && pathname === "/c/search") return true;
+
+  return false;
+}
+
+function isPublicSafeOffer(offer, retailer = null) {
+  if (!VERIFIED_URL_STATUSES.has(normalizeKey(offer?.url_status))) return false;
+
+  const issue = urlQuality.getUrlQualityIssue(offer?.retailer_product_url, {
+    retailerId: offer?.retailer_id,
+    retailer
+  });
+  if (issue) return false;
+
+  return !hasUnsafeSearchOrTrackingUrl(offer?.retailer_product_url);
+}
+
+function publicSafeOffers(db, options = {}) {
+  const retailersById = new Map((db.retailers || []).map(retailer => [retailer.retailer_id, retailer]));
+
+  if (exportUnverifiedOffersEnabled(options)) {
+    // Unsafe for production: this is only for internal review exports.
+    return (db.retailer_offers || []).map(offer => ({
+      offer,
+      retailer: retailersById.get(offer.retailer_id) || {}
+    }));
+  }
+
+  return (db.retailer_offers || [])
+    .map(offer => ({
+      offer,
+      retailer: retailersById.get(offer.retailer_id) || {}
+    }))
+    .filter(({ offer, retailer }) => isPublicSafeOffer(offer, retailer));
+}
+
+function verifiedPublicSafeOffers(db) {
+  const retailersById = new Map((db.retailers || []).map(retailer => [retailer.retailer_id, retailer]));
+  return (db.retailer_offers || [])
+    .map(offer => ({
+      offer,
+      retailer: retailersById.get(offer.retailer_id) || {}
+    }))
+    .filter(({ offer, retailer }) => isPublicSafeOffer(offer, retailer));
+}
+
+function publicProducts(db, options = {}) {
+  const products = db.products || [];
+  if (exportProductsWithoutVerifiedOffersEnabled(options)) {
+    return products.map(product => pick(product, PRODUCT_FIELDS));
+  }
+
+  const productIdsWithSafeOffers = new Set(verifiedPublicSafeOffers(db).map(({ offer }) => offer.product_id));
+  return products
+    .filter(product => productIdsWithSafeOffers.has(product.product_id))
+    .map(product => pick(product, PRODUCT_FIELDS));
 }
 
 function publicRetailers(db) {
@@ -62,10 +170,7 @@ function publicRetailers(db) {
 }
 
 function publicRetailerOffers(db, options = {}) {
-  const retailersById = new Map((db.retailers || []).map(retailer => [retailer.retailer_id, retailer]));
-
-  return (db.retailer_offers || []).map(offer => {
-    const retailer = retailersById.get(offer.retailer_id) || {};
+  return publicSafeOffers(db, options).map(({ offer, retailer }) => {
     const row = pick(
       {
         ...offer,
@@ -80,11 +185,14 @@ function publicRetailerOffers(db, options = {}) {
   });
 }
 
-function publicPriceSnapshots(db) {
+function publicPriceSnapshots(db, options = {}) {
   const offersById = new Map((db.retailer_offers || []).map(offer => [offer.retailer_offer_id, offer]));
   const retailersById = new Map((db.retailers || []).map(retailer => [retailer.retailer_id, retailer]));
+  const safeOfferIds = new Set(verifiedPublicSafeOffers(db).map(({ offer }) => offer.retailer_offer_id));
 
-  return (db.price_snapshots || []).map(snapshot => {
+  return (db.price_snapshots || [])
+    .filter(snapshot => safeOfferIds.has(snapshot.retailer_offer_id))
+    .map(snapshot => {
     const offer = offersById.get(snapshot.retailer_offer_id) || {};
     const retailer = retailersById.get(offer.retailer_id) || {};
     return pick(
@@ -101,14 +209,25 @@ function publicPriceSnapshots(db) {
 }
 
 function rowsForPublicTable(db, table, options = {}) {
-  if (table === "products") return publicProducts(db);
+  if (table === "products") return publicProducts(db, options);
   if (table === "retailers") return publicRetailers(db);
   if (table === "retailer_offers") return publicRetailerOffers(db, options);
-  if (table === "price_snapshots") return publicPriceSnapshots(db);
+  if (table === "price_snapshots") return publicPriceSnapshots(db, options);
   return undefined;
 }
 
+function fieldsForPublicTable(table, options = {}) {
+  const fields = PUBLIC_TABLE_FIELDS[table];
+  if (!fields) return undefined;
+  if (table === "retailer_offers" && affiliateUrlsEnabled(options)) {
+    return [...fields, "affiliate_url"];
+  }
+  return [...fields];
+}
+
 module.exports = {
+  fieldsForPublicTable,
+  isPublicSafeOffer,
   publicProducts,
   publicRetailers,
   publicRetailerOffers,

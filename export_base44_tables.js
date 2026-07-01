@@ -42,8 +42,10 @@ function csvEscape(value) {
   const str = String(value);
   return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
 }
-function toCsv(rows) {
-  const cols = Array.from(new Set(rows.flatMap(row => Object.keys(row || {}))));
+function toCsv(rows, columns = null) {
+  const cols = Array.isArray(columns) && columns.length
+    ? columns
+    : Array.from(new Set(rows.flatMap(row => Object.keys(row || {}))));
   return [cols.join(","), ...rows.map(row => cols.map(col => csvEscape(row[col])).join(","))].join("\n");
 }
 
@@ -54,6 +56,15 @@ function rowsForExport(db, table) {
     });
   }
   return db[table];
+}
+
+function columnsForExport(table) {
+  if (PUBLIC_TABLES.includes(table)) {
+    return publicSerializers.fieldsForPublicTable(table, {
+      exportAffiliateUrls: EXPORT_AFFILIATE_URLS
+    });
+  }
+  return null;
 }
 
 function main() {
@@ -70,7 +81,7 @@ function main() {
   for (const table of TABLES) {
     const rows = rowsForExport(db, table);
     if (!Array.isArray(rows)) continue;
-    fs.writeFileSync(path.join(runDir, `${table}.csv`), toCsv(rows));
+    fs.writeFileSync(path.join(runDir, `${table}.csv`), toCsv(rows, columnsForExport(table)));
     exported.push({ table, rows: rows.length });
   }
 
