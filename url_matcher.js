@@ -18,6 +18,7 @@ const STRIP_TRACKING_PARAMS = String(process.env.STRIP_TRACKING_PARAMS || "true"
 
 const MANUAL_OVERRIDE_FIELDS = ["manual_verified", "human_verified", "review_override"];
 const MANUAL_OVERRIDE_VALUES = new Set(["true", "yes", "y", "1"]);
+const VERIFIED_URL_STATUSES = new Set(["verified_api", "verified_manual"]);
 
 function numberEnv(value, fallback) {
   if (value === undefined || value === "") return fallback;
@@ -410,6 +411,19 @@ function manualOverrideField(row) {
   return MANUAL_OVERRIDE_FIELDS.find(field => MANUAL_OVERRIDE_VALUES.has(core.normalizeKey(row[field])));
 }
 
+function importUrlStatus(row) {
+  const requestedStatus = core.normalizeKey(row.url_status);
+  if (!requestedStatus) return { ok: true, status: "verified_manual" };
+  if (VERIFIED_URL_STATUSES.has(requestedStatus)) return { ok: true, status: requestedStatus };
+  return { ok: false, status: requestedStatus, reason: "invalid_url_status" };
+}
+
+function verificationMethod(row, urlStatus, overrideField) {
+  if (urlStatus === "verified_api") return "api";
+  if (overrideField) return "manual";
+  return "review_csv";
+}
+
 function validateImportRow(row, db, context) {
   const offer = context.offersById.get(row.retailer_offer_id);
   if (!offer) return { ok: false, reason: "unknown_retailer_offer" };
@@ -429,6 +443,14 @@ function validateImportRow(row, db, context) {
 
   const staticMatchScore = product ? scoreUrlMatch(product, cleanedUrl) : 0;
   const overrideField = manualOverrideField(row);
+  const urlStatus = importUrlStatus(row);
+  if (!urlStatus.ok) {
+    return {
+      ok: false,
+      reason: urlStatus.reason,
+      url_status: urlStatus.status
+    };
+  }
 
   if (staticMatchScore < URL_MATCH_MIN_SCORE) {
     if (!overrideField) {
@@ -458,7 +480,12 @@ function validateImportRow(row, db, context) {
     retailer,
     cleanedUrl,
     static_match_score: staticMatchScore,
-    manual_override_field: overrideField || ""
+    manual_override_field: overrideField || "",
+    url_status: urlStatus.status,
+    url_verified_by: core.normalizeText(row.url_verified_by || "review_csv"),
+    url_verification_method: verificationMethod(row, urlStatus.status, overrideField),
+    url_review_notes: core.normalizeText(row.notes),
+    source_terms_status: core.normalizeText(row.source_terms_status)
   };
 }
 
@@ -480,11 +507,23 @@ function runImport() {
       if (validation.static_match_score !== undefined) rejectedRow.static_match_score = validation.static_match_score;
       if (validation.url_match_min_score !== undefined) rejectedRow.url_match_min_score = validation.url_match_min_score;
       if (validation.manual_override_field !== undefined) rejectedRow.manual_override_field = validation.manual_override_field;
+      if (validation.url_status !== undefined) rejectedRow.url_status = validation.url_status;
       rejected.push(rejectedRow);
       continue;
     }
 
-    const { offer, product, cleanedUrl, static_match_score } = validation;
+    const {
+      offer,
+      product,
+      cleanedUrl,
+      static_match_score,
+      url_status,
+      url_verified_by,
+      url_verification_method,
+      url_review_notes,
+      source_terms_status
+    } = validation;
+    const verifiedAt = core.nowBase44DateTime();
     const before = {
       retailer_product_url: offer.retailer_product_url || null,
       source_url: offer.source_url || null,
@@ -497,6 +536,13 @@ function runImport() {
     offer.url_reviewed_at = core.nowBase44DateTime();
     offer.url_match_confidence = static_match_score;
     offer.url_match_source = row.url_match_source || "manual_review_csv";
+    offer.url_status = url_status;
+    offer.url_confidence = static_match_score;
+    if (!DRY_RUN) offer.url_verified_at = verifiedAt;
+    offer.url_verified_by = url_verified_by;
+    offer.url_verification_method = url_verification_method;
+    offer.url_review_notes = url_review_notes;
+    if (source_terms_status) offer.source_terms_status = source_terms_status;
 
     if (IMPORT_AFFILIATE_URLS && row.affiliate_url) offer.affiliate_url = row.affiliate_url;
 
@@ -507,7 +553,14 @@ function runImport() {
       product: core.normalizeText(`${product?.brand || ""} ${product?.model || ""}`),
       previous_url: before.retailer_product_url,
       new_url: cleanedUrl,
-      static_match_score
+      static_match_score,
+      url_status,
+      url_confidence: static_match_score,
+      url_verified_at: DRY_RUN ? null : verifiedAt,
+      url_verified_by,
+      url_verification_method,
+      url_review_notes,
+      source_terms_status: source_terms_status || null
     });
 
     logChange(db, {
@@ -540,7 +593,8 @@ function runImport() {
     updated_offers: updated.length,
     rejected_rows: rejected.length,
     rejected_csv: rejected.length ? rejectFile : null,
-    affiliate_urls_imported: IMPORT_AFFILIATE_URLS
+    affiliate_urls_imported: IMPORT_AFFILIATE_URLS,
+    updated_preview: updated.slice(0, 5)
   });
 
   if (DRY_RUN) {
