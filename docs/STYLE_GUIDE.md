@@ -80,6 +80,15 @@ CSV and JSON exports must use `public_serializers.js`. Public CSVs should preser
 
 Automated data runs should audit, export, report, and email summaries only. They must not scrape, import URLs, mutate `db.json`, or commit generated files. Missing email configuration should skip email without failing the safe local report run.
 
+Automation must be explainable:
+
+- No silent updates.
+- Every skipped action needs a reason.
+- Every mutation must be traceable to an approved mode, input file, and changed row list.
+- Base44 readiness must be explicit.
+- `support@buildwise-pc.com` is the default business reporting inbox.
+- Daily reports should say what happened, what changed, what was skipped, what is safe, and what to do next.
+
 ## 12. Retailer Connector Standards
 
 Prefer official APIs or approved feeds. Do not scrape aggressively or bypass site restrictions. Add source governance, rate limits, and compliance notes before automated retailer fetching.

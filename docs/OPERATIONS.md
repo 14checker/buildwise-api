@@ -12,6 +12,14 @@ The data run is safe by default. It audits the public data state, creates Base44
 
 It does not scrape, import URLs, use `WRITE=true`, or mutate `db.json`.
 
+Default mode:
+
+- `BUILDWISE_RUN_MODE=audit_only`
+- `BUILDWISE_AUTONOMY_LEVEL=report_only`
+- `BUILDWISE_REPORT_EMAIL=support@buildwise-pc.com`
+
+The GitHub Actions workflow runs the same safe daily report on a schedule and can also be triggered manually with `workflow_dispatch`.
+
 ## Report Outputs
 
 Reports are written to `buildwise_reports/`:
@@ -47,6 +55,20 @@ Required email variables:
 
 If any are missing, email is skipped and local reports are still written.
 
+The email contains:
+
+- executive summary
+- public data counts
+- deltas since the last run
+- actions taken
+- skipped actions and reasons
+- safety checks
+- warnings
+- required human review
+- Base44 readiness
+- next recommended action
+- machine-readable summary block
+
 ## Claude Review Loop
 
 Claude should treat the email as an operations summary, not as proof that hidden data is safe. Claude should review warnings, compare counts to the previous baseline, and recommend the next small reviewed batch.
@@ -58,6 +80,23 @@ Warnings usually mean:
 - Price history is unavailable because source/status metadata is missing.
 - A database file was missing from the environment.
 
+Claude should recommend Base44 pulls only when:
+
+- `base44_ready=true`
+- `base44_should_pull=true`
+- no critical safety failures are present
+- public output remains free of raw db data, affiliate URLs, source URLs, review metadata, internal fields, unverified URLs, and seed prices
+
+Human review is required when reports list review files, uncertain candidate rows, failed checks, missing credentials, or source/terms decisions.
+
+Status meanings:
+
+- `PASS`: safe and clean.
+- `PASS_WITH_WARNINGS`: safe but incomplete or attention-worthy.
+- `NEEDS_REVIEW`: a human decision is needed before the next action.
+- `BLOCKED`: a requested mode cannot continue because enablement, credentials, or inputs are missing.
+- `FAILED`: a critical safety or export failure occurred.
+
 ## Failed Run Response
 
 If a safe data run fails:
@@ -67,6 +106,8 @@ If a safe data run fails:
 3. Run `npm run check:safe`.
 4. Review the error and the most recent report.
 5. Fix code in a focused branch, then rerun safe checks.
+
+If the report is blocked, do not bypass the blocker. Fix the missing configuration, review input, credential, or source-governance decision first.
 
 ## Recovery After a Bad Import
 

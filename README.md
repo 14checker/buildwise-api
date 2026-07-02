@@ -85,7 +85,50 @@ npm run data:run
 
 The data run performs safe audit/export/report work only. It does not scrape, import URLs, use `WRITE=true`, or mutate `db.json`.
 
-If SMTP variables are configured, the summary can be emailed to `support@buildwise-pc.com`, where Claude can monitor the report stream. If SMTP is missing, the run still writes local reports and prints `email skipped: missing SMTP config`.
+Default daily run settings:
+
+- `BUILDWISE_RUN_MODE=audit_only`
+- `BUILDWISE_AUTONOMY_LEVEL=report_only`
+- `BUILDWISE_REPORT_EMAIL=support@buildwise-pc.com`
+
+If SMTP variables are configured, the summary is emailed to `support@buildwise-pc.com`, where Claude can monitor the report stream. If SMTP is missing, the run still writes local reports and records `email skipped: missing SMTP config`.
+
+Daily reports explain:
+
+- what happened
+- what changed since the last run
+- what was skipped and why
+- whether `db.json` changed
+- whether Base44 can safely pull public data
+- what requires human review
+- the next recommended action
+
+Run modes:
+
+- `audit_only`: default daily audit/export/report/email mode; no mutation.
+- `review_prepare`: future review-file preparation mode; no mutation.
+- `connector_check`: future read-only connector check mode; no mutation by default.
+- `approved_import`: future supervised import mode; requires `WRITE=true`, an explicit import file, and a prior dry-run pass.
+- `publish_ready_check`: safe readiness check for Base44 public data.
+
+Autonomy levels:
+
+- `report_only`: default; audit/export/report/email only.
+- `prepare_reviews`: future review file and read-only connector preparation.
+- `supervised_import`: future approved import mode only.
+- `full_auto_safe`: future only; blocked unless explicitly enabled and all safety prerequisites exist.
+
+Report statuses:
+
+- `PASS`: clean safe run.
+- `PASS_WITH_WARNINGS`: safe run with warnings such as hidden placeholder URLs or hidden seed prices.
+- `NEEDS_REVIEW`: review files, uncertain candidates, or human decisions need attention.
+- `BLOCKED`: requested mode is missing required enablement, credentials, or inputs.
+- `FAILED`: critical safety issue or export failure.
+
+Email sections include executive summary, public data now, deltas since the last run, actions taken, actions skipped, safety checks, warnings, required human review, Base44 readiness, next action, and a machine-readable summary for Claude/co-agent parsing.
+
+Base44 should pull only when `base44_ready=true`. The report marks the update mode as `csv_ready`, `api_ready`, or `blocked`.
 
 ## URL Verification Workflow
 

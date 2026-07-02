@@ -131,8 +131,7 @@ function createApp() {
   app.get("/health", (req, res) => {
     res.json({
       ok: true,
-      safe_mode: true,
-      data_source: DB_FILE
+      safe_mode: true
     });
   });
 

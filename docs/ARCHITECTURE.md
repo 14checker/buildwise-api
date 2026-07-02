@@ -63,3 +63,22 @@ Recommended review pattern:
 3. Confirm `db_hash` matches the expected baseline.
 4. Decide the next small URL or price verification batch.
 5. Avoid bulk writes until the reviewed batch passes dry-run checks.
+
+## Automation and Reporting Loop
+
+The daily operating loop is:
+
+1. Load private backend data.
+2. Build public-safe views through `public_serializers.js`.
+3. Export safe CSV and JSON.
+4. Compute run identity, deltas, skipped actions, warnings, safety checks, and Base44 readiness.
+5. Write timestamped local reports and `latest_data_run_summary.json`.
+6. Email the report to `support@buildwise-pc.com` when SMTP is configured.
+
+The report is designed to be readable by Caleb, a partner reviewer, and Claude.
+
+## Future Live/Event Reporting
+
+The reporting model reserves structure for future live events such as URL candidates found, approved imports completed, connector checks completed, price updates completed, public export blocks, Base44 readiness changes, and critical safety failures.
+
+Those event reports are placeholders only in the current branch. They do not enable scraping, URL imports, retailer API calls, or db mutation.

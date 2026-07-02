@@ -1,9 +1,10 @@
 name: BuildWise Data Run
 
-# This workflow does not scrape retailer sites.
-# This workflow does not import URLs.
-# This workflow does not mutate db.json.
-# It only audits, exports safe public data, and emails a report when SMTP secrets are configured.
+# This daily run does not scrape retailer sites.
+# This daily run does not import URLs.
+# This daily run does not mutate db.json.
+# It audits, exports safe public data, reports, and emails only when SMTP secrets are configured.
+# Future live reports require explicit event modes and are not enabled by this workflow.
 
 on:
   workflow_dispatch:
@@ -12,6 +13,11 @@ on:
 
 permissions:
   contents: read
+
+env:
+  BUILDWISE_RUN_MODE: audit_only
+  BUILDWISE_AUTONOMY_LEVEL: report_only
+  BUILDWISE_REPORT_EMAIL: support@buildwise-pc.com
 
 jobs:
   data-run:
@@ -56,7 +62,6 @@ jobs:
       - name: Run safe BuildWise data report
         env:
           DB_FILE: ${{ vars.DB_FILE }}
-          BUILDWISE_REPORT_EMAIL: ${{ secrets.BUILDWISE_REPORT_EMAIL }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
