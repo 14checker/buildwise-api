@@ -1,3 +1,13 @@
+/**
+ * BuildWise purpose:
+ * Provide URL safety checks used by URL review and public export gates.
+ *
+ * Plain-English summary:
+ * This file helps reject missing, fake, placeholder, wrong-domain, search-page, or tracking-heavy URLs.
+ *
+ * Safety note:
+ * It does not prove page content by itself; it supports safer review before URLs are imported or exposed publicly.
+ */
 const { URL } = require("url");
 
 const RETAILER_DOMAINS = {

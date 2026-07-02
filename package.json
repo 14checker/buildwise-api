@@ -28,6 +28,10 @@
     "audit:quality": "node data_quality_audit.js",
     "alerts": "node alert_engine.js",
     "export:base44": "node export_base44_tables.js",
+    "export:json": "node export_public_json.js",
+    "api:public": "node public_api_server.js",
+    "data:run": "node buildwise_data_run.js",
+    "check:safe": "node --check public_api_server.js && node --check buildwise_data_run.js && node --check export_public_json.js && node --check public_data_metrics.js && node --check export_base44_tables.js && node --check public_serializers.js && node --check url_matcher.js && node --check url_quality.js",
     "report:admin": "node generate_admin_report.js",
     "pipeline": "node pipeline_orchestrator.js",
     "check:syntax": "node --check buildwise_backend_core.js && node --check tracker_updated.js && node --check discover_products.js && node --check group_products.js && node --check promote_candidates.js && node --check scheduler.js && node --check pipeline_orchestrator.js && node --check source_governance.js && node --check compliance_audit.js && node --check data_quality_audit.js && node --check alert_engine.js && node --check export_base44_tables.js && node --check generate_admin_report.js"
@@ -35,6 +39,8 @@
   "dependencies": {
     "axios": "latest",
     "cheerio": "latest",
+    "express": "latest",
+    "nodemailer": "latest",
     "xlsx": "latest"
   }
 }

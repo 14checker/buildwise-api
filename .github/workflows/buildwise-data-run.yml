@@ -1,0 +1,81 @@
+name: BuildWise Data Run
+
+# This daily run does not scrape retailer sites.
+# This daily run does not import URLs.
+# This daily run does not mutate db.json.
+# It audits, exports safe public data, reports, and emails only when SMTP secrets are configured.
+# Future live reports require explicit event modes and are not enabled by this workflow.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 14 * * *"
+
+permissions:
+  contents: read
+
+env:
+  BUILDWISE_RUN_MODE: audit_only
+  BUILDWISE_AUTONOMY_LEVEL: report_only
+  BUILDWISE_REPORT_EMAIL: support@buildwise-pc.com
+
+jobs:
+  data-run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          if [ -f package.json ]; then
+            npm install
+          fi
+
+      - name: Syntax checks
+        run: |
+          node --check public_api_server.js
+          node --check buildwise_data_run.js
+          node --check export_public_json.js
+          node --check public_data_metrics.js
+          node --check export_base44_tables.js
+          node --check public_serializers.js
+          node --check url_matcher.js
+          node --check url_quality.js
+
+      - name: Confirm database file is available
+        env:
+          DB_FILE: ${{ vars.DB_FILE }}
+        run: |
+          DB_PATH="${DB_FILE:-db.json}"
+          if [ ! -f "$DB_PATH" ]; then
+            echo "::error::Missing BuildWise database file at $DB_PATH. Configure DB_FILE or provide the production-safe database before running this workflow."
+            exit 1
+          fi
+
+      - name: Run safe BuildWise data report
+        env:
+          DB_FILE: ${{ vars.DB_FILE }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+        run: node buildwise_data_run.js
+
+      - name: Upload safe reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: buildwise-data-run
+          path: |
+            buildwise_reports/**
+            base44_table_exports/**
+            public_data/**
+          if-no-files-found: ignore

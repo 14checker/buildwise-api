@@ -17,7 +17,10 @@ backups/
 *.xls
 buildwise_tracker_exports/
 base44_table_exports/
+public_data/
 buildwise_reports/
+url_review_templates/
+buildwise_backups/
 *.csv
 
 # runtime

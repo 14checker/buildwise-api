@@ -1,3 +1,13 @@
+/**
+ * BuildWise purpose:
+ * Help review and safely import real retailer product URLs.
+ *
+ * Plain-English summary:
+ * This file audits placeholder URLs, prepares review reports, dry-runs imports, and enforces score/manual-review gates.
+ *
+ * Safety note:
+ * It defaults to dry-run behavior and must not mutate db.json unless a reviewed import is run with DRY_RUN=false and WRITE=true.
+ */
 const fs = require("fs");
 const path = require("path");
 const core = require("./buildwise_backend_core");
