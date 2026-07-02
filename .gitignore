@@ -8,9 +8,16 @@ node_modules/
 
 # local data
 db.json
+*.db
 db_*.json
 *_db.json
 backups/
+
+# private database handoff for GitHub Actions
+# Raw databases stay ignored. Only encrypted database files may be committed.
+buildwise_private/*
+!buildwise_private/
+!buildwise_private/db.json.gpg
 
 # workbook / exports / reports
 *.xlsx

@@ -130,6 +130,26 @@ Email sections include executive summary, public data now, deltas since the last
 
 Base44 should pull only when `base44_ready=true`. The report marks the update mode as `csv_ready`, `api_ready`, or `blocked`.
 
+## Private Database for GitHub Actions
+
+Raw `db.json` is private production data and must never be committed, uploaded as an artifact, pasted into logs, or exposed to Base44.
+
+GitHub Actions still needs a private database source to run the daily report. The short-term operating path is to commit only an encrypted database file:
+
+- encrypted file: `buildwise_private/db.json.gpg`
+- GitHub Actions secret: `BUILDWISE_DB_GPG_PASSPHRASE`
+- decrypted runtime path inside the runner: `db.json`
+
+To prepare the encrypted file locally, set `BUILDWISE_DB_GPG_PASSPHRASE` in your shell and run:
+
+```bash
+./scripts/encrypt_db_for_actions.sh
+```
+
+The workflow decrypts `buildwise_private/db.json.gpg` only inside the GitHub Actions runner. The decrypted `db.json` remains ignored by git and must never be uploaded as an artifact. Safe report artifacts may include sanitized reports, Base44 CSV exports, and public JSON output only.
+
+Longer term, BuildWise should move this private source of truth to managed storage or a hosted backend database instead of relying on an encrypted file in the repo.
+
 ## URL Verification Workflow
 
 `url_matcher.js` supports audits, review CSVs, dry-run imports, score thresholds, and manual override checks. Real URL imports require explicit approval and must use both:
@@ -152,6 +172,7 @@ That means Base44 can show verified retailer links while prices remain blank or 
 - `BASE44_ALLOWED_ORIGINS`: comma-separated CORS allowlist for the public API.
 - `PUBLIC_API_RATE_LIMIT_PER_MINUTE`: optional API rate limit. Defaults to `120`.
 - `BUILDWISE_REPORT_EMAIL`: report recipient.
+- `BUILDWISE_DB_GPG_PASSPHRASE`: passphrase for decrypting `buildwise_private/db.json.gpg` in GitHub Actions.
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`: SMTP settings for report email.
 
 ## Safe Commands
@@ -167,6 +188,7 @@ npm run data:run
 ## Safety Rules
 
 - Do not expose raw `db.json`.
+- Do not commit raw `db.json`; commit only encrypted `buildwise_private/db.json.gpg` when using the short-term Actions path.
 - Do not put secrets or tokens in Base44 client code.
 - Do not run live scraping by default.
 - Do not mutate `db.json` unless explicitly approved.

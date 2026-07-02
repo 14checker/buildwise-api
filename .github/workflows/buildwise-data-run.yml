@@ -18,6 +18,7 @@ env:
   BUILDWISE_RUN_MODE: audit_only
   BUILDWISE_AUTONOMY_LEVEL: report_only
   BUILDWISE_REPORT_EMAIL: support@buildwise-pc.com
+  BUILDWISE_DB_GPG_PASSPHRASE: ${{ secrets.BUILDWISE_DB_GPG_PASSPHRASE }}
 
 jobs:
   data-run:
@@ -37,6 +38,11 @@ jobs:
           if [ -f package.json ]; then
             npm install
           fi
+
+      - name: Decrypt BuildWise database
+        run: ./scripts/decrypt_db_for_actions.sh
+        env:
+          BUILDWISE_DB_GPG_PASSPHRASE: ${{ secrets.BUILDWISE_DB_GPG_PASSPHRASE }}
 
       - name: Syntax checks
         run: |
@@ -74,6 +80,7 @@ jobs:
         if: always()
         with:
           name: buildwise-data-run
+          # Safe public outputs only. Never upload db.json, buildwise_private, .env, credentials, or secrets.
           path: |
             buildwise_reports/**
             base44_table_exports/**
