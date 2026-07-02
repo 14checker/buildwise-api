@@ -1,0 +1,82 @@
+# BuildWise Operations
+
+## Daily or Manual Data Run
+
+Run locally:
+
+```powershell
+npm run data:run
+```
+
+The data run is safe by default. It audits the public data state, creates Base44 CSV exports, creates public JSON exports, writes reports, and optionally emails a summary.
+
+It does not scrape, import URLs, use `WRITE=true`, or mutate `db.json`.
+
+## Report Outputs
+
+Reports are written to `buildwise_reports/`:
+
+- `data_run_<timestamp>.json`
+- `data_run_<timestamp>.txt`
+
+Generated reports are ignored by git.
+
+## What the Metrics Mean
+
+- `public_products`: products currently safe for Base44.
+- `public_offers`: verified public-safe retailer offers.
+- `public_retailers`: public retailer reference rows.
+- `public_price_snapshots`: verified public-safe price history rows.
+- `verified_offers`: offers with verified URL status and safe URLs.
+- `hidden_placeholder_offers`: offers hidden because URLs are missing, placeholder, wrong-domain, or unsafe.
+- `hidden_seed_demo_prices`: offer price fields hidden because pricing is unverified or seed/demo data.
+- `db_hash`: SHA256 of the database file used for the run.
+
+## Email Reporting
+
+If SMTP variables are configured, `buildwise_data_run.js` emails a summary to `BUILDWISE_REPORT_EMAIL`, expected to be `support@buildwise-pc.com`.
+
+Required email variables:
+
+- `BUILDWISE_REPORT_EMAIL`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USER`
+- `SMTP_PASS`
+- `SMTP_FROM`
+
+If any are missing, email is skipped and local reports are still written.
+
+## Claude Review Loop
+
+Claude should treat the email as an operations summary, not as proof that hidden data is safe. Claude should review warnings, compare counts to the previous baseline, and recommend the next small reviewed batch.
+
+Warnings usually mean:
+
+- URL verification is still incomplete.
+- Seed/demo pricing is being hidden.
+- Price history is unavailable because source/status metadata is missing.
+- A database file was missing from the environment.
+
+## Failed Run Response
+
+If a safe data run fails:
+
+1. Do not retry with `WRITE=true`.
+2. Check `DB_FILE` and confirm the database exists.
+3. Run `npm run check:safe`.
+4. Review the error and the most recent report.
+5. Fix code in a focused branch, then rerun safe checks.
+
+## Recovery After a Bad Import
+
+If a real import mutates `db.json` incorrectly:
+
+1. Stop before running tracker or exports.
+2. Hash the current `db.json`.
+3. Compare changed offer IDs against the approved import file.
+4. Restore from the most recent approved backup in `buildwise_backups/`.
+5. Hash the restored file.
+6. Dry-run the corrected import before any future `WRITE=true` run.
+
+Never recover by guessing or manually editing production data without a clear approved plan.

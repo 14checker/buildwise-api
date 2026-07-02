@@ -1,3 +1,13 @@
+/**
+ * BuildWise purpose:
+ * Define the public-safe version of BuildWise product, retailer, offer, and price data.
+ *
+ * Plain-English summary:
+ * This file decides which backend fields are safe for Base44, public JSON, and the public API.
+ *
+ * Safety note:
+ * Keep raw database, affiliate, source, review, user, alert, admin, scrape, and compliance fields out of this boundary.
+ */
 const urlQuality = require("./url_quality");
 
 const PRODUCT_FIELDS = [
