@@ -20,6 +20,36 @@ Default mode:
 
 The GitHub Actions workflow runs the same safe daily report on a schedule and can also be triggered manually with `workflow_dispatch`.
 
+## Private Database in GitHub Actions
+
+Raw `db.json` is private production data. It must never be committed, printed in logs, uploaded as an artifact, or sent to Base44.
+
+Because GitHub Actions runs in a fresh runner, the daily workflow needs a private database source. The short-term BuildWise path is:
+
+- commit only the encrypted file `buildwise_private/db.json.gpg`
+- store the passphrase as the GitHub secret `BUILDWISE_DB_GPG_PASSPHRASE`
+- decrypt to `db.json` only inside the workflow runner
+- keep decrypted `db.json` ignored and never upload it as an artifact
+
+Local preparation:
+
+```bash
+export BUILDWISE_DB_GPG_PASSPHRASE="<your private passphrase>"
+./scripts/encrypt_db_for_actions.sh
+```
+
+Workflow behavior:
+
+1. Checkout the repo.
+2. Install dependencies.
+3. Decrypt `buildwise_private/db.json.gpg` to `db.json`.
+4. Run syntax checks, exports, reporting, and optional email.
+5. Upload only sanitized reports/exports. Never upload `db.json`, `buildwise_private/*`, `.env`, credentials, or secrets.
+
+If `buildwise_private/db.json.gpg` or `BUILDWISE_DB_GPG_PASSPHRASE` is missing, the workflow should fail clearly before exports or reporting begin.
+
+This encrypted file approach is a short-term bridge. Longer-term production should move BuildWise data to managed storage or a hosted backend database with proper access controls.
+
 ## Report Outputs
 
 Reports are written to `buildwise_reports/`:
