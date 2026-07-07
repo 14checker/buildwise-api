@@ -85,6 +85,18 @@ Required email variables:
 
 If any are missing, email is skipped and local reports are still written.
 
+## HTML Email Report
+
+BuildWise sends daily report email as multipart email with a dashboard-style HTML body and the existing plain-text fallback.
+
+The HTML report uses inline, email-safe styling with dark BuildWise colors, metric cards, status badges, warning cards, and Base44 readiness details. It does not rely on external CSS, scripts, remote fonts, remote images, or background images.
+
+Each data run also writes a local HTML preview report under `buildwise_reports/`:
+
+- `data_run_<timestamp>.html`
+
+Email delivery still requires SMTP secrets. If an email client blocks HTML, the plain-text fallback remains available.
+
 The email contains:
 
 - executive summary
