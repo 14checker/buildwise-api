@@ -1,5 +1,16 @@
 # BuildWise Operations
 
+## Repository Ownership
+
+BuildWise has a production repo and a development/source repo:
+
+- Production / operational repo: `tjvoelkel/buildwise-api`
+- Development / source repo: `14checker/buildwise-api`
+
+Daily scheduled reporting runs from Taylor's production repo only. Caleb's repo is used for Codex branches, development, experiments, and PR preparation. The Caleb workflow is manual-only and should be used for smoke testing, not production daily email.
+
+Base44 must not use raw GitHub repo access, GitHub tokens, raw `db.json`, the encrypted database passphrase, SMTP secrets, or private backend files. Base44 should consume only public-safe CSV exports, public-safe JSON exports, or public API endpoints. All public data must pass through `public_serializers.js`.
+
 ## Daily or Manual Data Run
 
 Run locally:
@@ -18,7 +29,7 @@ Default mode:
 - `BUILDWISE_AUTONOMY_LEVEL=report_only`
 - `BUILDWISE_REPORT_EMAIL=support@buildwise-pc.com`
 
-The GitHub Actions workflow runs the same safe daily report on a schedule and can also be triggered manually with `workflow_dispatch`.
+Taylor's production GitHub Actions workflow runs the same safe daily report on a schedule and can also be triggered manually with `workflow_dispatch`. Caleb's development workflow keeps only `workflow_dispatch` for manual smoke tests.
 
 ## Private Database in GitHub Actions
 

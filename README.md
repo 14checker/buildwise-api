@@ -6,6 +6,17 @@ BuildWise is a PC parts data backend for powering a Base44 app with clean produc
 
 BuildWise should help shoppers compare PC hardware using verified retailer links, trustworthy prices, and clear product data. The short-term launch path is conservative: publish verified product and retailer links first, keep seed/demo prices blank, and add price history only after pricing is verified.
 
+## Repository Ownership
+
+BuildWise uses two GitHub repos with different jobs:
+
+- Production / operational repo: `tjvoelkel/buildwise-api`
+- Development / source repo: `14checker/buildwise-api`
+
+Daily scheduled reporting should run from Taylor's production repo only. Caleb's repo is for Codex branches, development, experiments, and PR preparation. Its data-run workflow is manual-only so it can be used for smoke tests without accidentally sending production daily emails.
+
+Base44 must not use raw GitHub repo access, GitHub tokens, raw `db.json`, the encrypted database passphrase, SMTP secrets, or private backend files. Base44 should consume only public-safe CSV exports, public-safe JSON exports, or public API endpoints. All public data must pass through `public_serializers.js`.
+
 ## Backend Architecture
 
 The private backend stores the full working dataset in `db.json` and supports URL review, data quality checks, exports, reporting, and future retailer connectors. Public app data must pass through `public_serializers.js` before it reaches Base44, static JSON, or the public API.
@@ -84,6 +95,8 @@ npm run data:run
 ```
 
 The data run performs safe audit/export/report work only. It does not scrape, import URLs, use `WRITE=true`, or mutate `db.json`.
+
+Scheduled production reporting runs from `tjvoelkel/buildwise-api`. In `14checker/buildwise-api`, the workflow is retained for manual development smoke tests only.
 
 Default daily run settings:
 

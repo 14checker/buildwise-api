@@ -1,15 +1,13 @@
 name: BuildWise Data Run
 
-# This daily run does not scrape retailer sites.
-# This daily run does not import URLs.
-# This daily run does not mutate db.json.
-# It audits, exports safe public data, reports, and emails only when SMTP secrets are configured.
-# Future live reports require explicit event modes and are not enabled by this workflow.
+# Caleb's 14checker/buildwise-api repo is development/source only.
+# Production daily reports run from Taylor's tjvoelkel/buildwise-api repo.
+# This workflow is retained here for manual smoke testing only.
+# No production daily email should run from Caleb's repo.
+# Manual runs still do not scrape, import URLs, use WRITE=true, or mutate db.json.
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 14 * * *"
 
 permissions:
   contents: read
