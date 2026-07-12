@@ -2,6 +2,7 @@ const core = require("./buildwise_backend_core");
 
 const DB_FILE = process.env.DB_FILE || "db.json";
 const TARGET_SCHEMA_VERSION = "8.0.0";
+const WRITE = String(process.env.WRITE || "false").toLowerCase() === "true";
 
 function ensureArray(db, name) {
   if (!Array.isArray(db[name])) db[name] = [];
@@ -52,12 +53,16 @@ function main() {
   });
 
   db.system_settings.schema_version = TARGET_SCHEMA_VERSION;
-  db.system_settings.last_migrated_at = core.nowBase44DateTime();
+  db.system_settings.last_migrated_at = WRITE ? core.nowBase44DateTime() : db.system_settings.last_migrated_at;
 
-  core.writeDb(db, DB_FILE);
+  if (WRITE) {
+    core.writeDb(db, DB_FILE);
+  } else {
+    console.log("DRY RUN - migration changes were not written to db.json. Set WRITE=true to persist schema updates.");
+  }
 
   console.log("Migration complete.");
-  console.log({ schema_version: db.system_settings.schema_version, db_file: DB_FILE });
+  console.log({ schema_version: db.system_settings.schema_version, db_file: DB_FILE, write_enabled: WRITE });
 }
 
 main();

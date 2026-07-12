@@ -174,3 +174,93 @@ If a real import mutates `db.json` incorrectly:
 6. Dry-run the corrected import before any future `WRITE=true` run.
 
 Never recover by guessing or manually editing production data without a clear approved plan.
+
+## Automated Retailer Ingestion Runbook
+
+The automated ingestion layer helps BuildWise move from reviewed candidate URLs to verified public-safe offers. It is not an uncontrolled scraper. It is a gated pipeline around reviewed candidate URLs, retailer-domain checks, page identity extraction, deterministic scoring, and explicit write flags.
+
+Primary files:
+
+- `ingestion_config.js`: central environment parsing and write-safety validation.
+- `retailer_adapters/`: retailer-aware URL validation, search query helpers, page fetch, and identity extraction.
+- `candidate_verification.js`: match scoring, hard conflict detection, safe offer upsert, and meaningful price snapshot checks.
+- `retailer_ingestion.js`: product coverage review generation, candidate evaluation, and optional promotion.
+- `verify_candidates.js`: CLI entry point for reviewed candidate verification.
+- `pipeline_orchestrator.js`: ordered production sync flow.
+- `scheduler.js`: long-running job scheduler with lock files.
+
+Dry-run candidate verification:
+
+```powershell
+$env:DISCOVERY_CANDIDATE_FILE="url_review_templates\\reviewed_candidates.csv"
+npm run verify:candidates
+```
+
+This validates and scores rows but does not mutate `db.json` unless `WRITE=true` is set. If `AUTO_PROMOTE=true` is set without `WRITE=true`, the run fails before work begins.
+
+Supervised write-capable verification:
+
+```powershell
+$env:DISCOVERY_CANDIDATE_FILE="url_review_templates\\reviewed_candidates.csv"
+$env:AUTO_PROMOTE="true"
+$env:WRITE="true"
+npm run verify:candidates
+```
+
+Use this only after a dry-run report confirms:
+
+- candidate URLs are direct product pages
+- retailer domains match
+- source terms are approved
+- hard conflicts are empty
+- match score meets policy
+- pricing changes, if any, are expected
+- a backup exists
+
+Production sync dry-run:
+
+```powershell
+$env:PIPELINE_MODE="production_sync"
+npm run pipeline:production
+```
+
+Production sync sequence:
+
+1. environment check
+2. backup
+3. migration, guarded by `WRITE=true`
+4. database validation
+5. database audit
+6. source compliance audit
+7. discovery review
+8. candidate verification
+9. grouping
+10. promotion, dry-run unless explicitly enabled
+11. tracker, dry-run unless explicitly enabled
+12. alerts
+13. data quality audit
+14. public JSON export
+15. Base44 CSV export
+16. pipeline status
+17. admin report
+
+The orchestrator appends `pipeline_runs` only when `WRITE=true`. Dry-run pipeline runs print that the run history was not written.
+
+Scheduler controls:
+
+- `RUN_ON_START=false` disables immediate startup jobs.
+- `PRODUCTION_SYNC_EVERY_MINUTES` schedules full production sync when greater than zero.
+- `TRACKER_EVERY_MINUTES`, `PROMOTE_EVERY_MINUTES`, `DISCOVERY_EVERY_MINUTES`, and `GROUP_EVERY_MINUTES` schedule individual jobs.
+- `.buildwise_locks/` prevents overlapping write-capable jobs.
+- `SCHEDULER_LOCK_STALE_MINUTES` controls stale-lock cleanup.
+
+The ingestion pipeline will not:
+
+- bypass robots, CAPTCHA, login, geo-blocks, or access controls
+- bulk scrape search/category pages
+- approve marketplace/refurbished/bundle variants by default
+- treat low-confidence fuzzy matches as exact
+- expose candidate records publicly
+- approve seed/demo pricing
+- generate fake price history
+- mutate `db.json` without `WRITE=true`

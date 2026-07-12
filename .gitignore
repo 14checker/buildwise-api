@@ -32,6 +32,7 @@ buildwise_backups/
 
 # runtime
 .buildwise_pipeline.lock
+.buildwise_locks/
 .cache/
 tmp/
 temp/

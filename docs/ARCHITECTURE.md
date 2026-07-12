@@ -82,3 +82,28 @@ The report is designed to be readable by Caleb, a partner reviewer, and Claude.
 The reporting model reserves structure for future live events such as URL candidates found, approved imports completed, connector checks completed, price updates completed, public export blocks, Base44 readiness changes, and critical safety failures.
 
 Those event reports are placeholders only in the current branch. They do not enable scraping, URL imports, retailer API calls, or db mutation.
+
+## Retailer Ingestion Pipeline
+
+The ingestion pipeline is the controlled path for turning reviewed retailer product-page candidates into verified BuildWise offers.
+
+Architecture:
+
+1. `ingestion_config.js` centralizes environment variables and blocks unsafe flag combinations.
+2. `retailer_adapters/` validates retailer domains and extracts page identity from product pages.
+3. `candidate_verification.js` scores product identity evidence and blocks hard conflicts.
+4. `retailer_ingestion.js` produces coverage review rows, evaluates candidate URLs, and optionally promotes matches.
+5. `verify_candidates.js` exposes the workflow as a CLI.
+6. `pipeline_orchestrator.js` sequences backup, migration, validation, discovery, verification, tracker, exports, and reports.
+7. `scheduler.js` can run the pipeline on intervals while preventing overlapping write-capable jobs.
+
+Automatic promotion is intentionally narrow. A candidate can promote only when:
+
+- `WRITE=true`
+- `AUTO_PROMOTE=true`
+- the URL is a direct retailer product page on the expected domain
+- page identity can be extracted
+- there are no hard conflicts
+- the match is exact by MPN/SKU or strong enough by model/category identity
+
+The public API and exports never expose `retailer_url_candidates`, scoring reasons, source URLs, admin queues, scrape logs, or review metadata. Promoted offers still pass through `public_serializers.js` before becoming public.

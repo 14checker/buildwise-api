@@ -6,6 +6,7 @@ const governance = require("./source_governance");
 const DB_FILE = process.env.DB_FILE || "db.json";
 const REPORT_DIR = process.env.REPORT_DIR || "buildwise_reports";
 const MAX_PRICE_AGE_HOURS = Number(process.env.MAX_PRICE_AGE_HOURS || 24);
+const WRITE = String(process.env.WRITE || "false").toLowerCase() === "true";
 
 function ensureDir(dir) { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); }
 function hoursAgo(value) {
@@ -70,7 +71,11 @@ function main() {
 
   db.data_quality_reports = Array.isArray(db.data_quality_reports) ? db.data_quality_reports : [];
   db.data_quality_reports.push({ report_id: `dq-${String(db.data_quality_reports.length + 1).padStart(6,"0")}`, created_at: report.created_at, average_score: report.average_product_quality_score, low_quality_products: lowQuality.length, stale_offers: staleOffers.length, report_file: file });
-  core.writeDb(db, DB_FILE);
+  if (WRITE) {
+    core.writeDb(db, DB_FILE);
+  } else {
+    console.log("DRY RUN - data quality report metadata not written to db.json. Set WRITE=true to persist report history.");
+  }
 
   console.log("Data quality audit complete.");
   console.log(report);

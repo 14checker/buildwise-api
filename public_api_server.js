@@ -122,6 +122,41 @@ function searchPublicData(rows, query) {
   return { query, products, offers };
 }
 
+function publicCategories(rows) {
+  const categories = new Map();
+  for (const product of rows.products || []) {
+    const id = product.category_id || "unknown";
+    const current = categories.get(id) || { category_id: id, product_count: 0 };
+    current.product_count += 1;
+    categories.set(id, current);
+  }
+  return [...categories.values()].sort((a, b) => a.category_id.localeCompare(b.category_id));
+}
+
+function publicBrands(rows) {
+  const brands = new Map();
+  for (const product of rows.products || []) {
+    const name = product.brand || "Unknown";
+    const key = normalizeText(name);
+    const current = brands.get(key) || { brand: name, product_count: 0 };
+    current.product_count += 1;
+    brands.set(key, current);
+  }
+  return [...brands.values()].sort((a, b) => a.brand.localeCompare(b.brand));
+}
+
+function productById(rows, productId) {
+  return rows.products.find(row => row.product_id === productId);
+}
+
+function offersForProduct(rows, productId) {
+  return rows.retailer_offers.filter(row => row.product_id === productId);
+}
+
+function priceHistoryForProduct(rows, productId) {
+  return rows.price_snapshots.filter(row => row.product_id === productId);
+}
+
 function createApp() {
   const app = express();
   app.disable("x-powered-by");
@@ -129,9 +164,20 @@ function createApp() {
   app.use(rateLimitMiddleware);
 
   app.get("/health", (req, res) => {
+    const { rows, status } = loadPublicData();
     res.json({
       ok: true,
-      safe_mode: true
+      safe_mode: true,
+      status: status.status,
+      data_last_updated_at: status.generated_at,
+      base44_ready: status.base44_ready,
+      base44_update_mode: status.base44_update_mode,
+      counts: {
+        products: rows.products.length,
+        retailer_offers: rows.retailer_offers.length,
+        retailers: rows.retailers.length,
+        price_snapshots: rows.price_snapshots.length
+      }
     });
   });
 
@@ -178,6 +224,76 @@ function createApp() {
   app.get("/public/search", (req, res) => {
     const { rows } = loadPublicData();
     res.json(searchPublicData(rows, req.query.q || ""));
+  });
+
+  app.get("/categories", (req, res) => {
+    const { rows } = loadPublicData();
+    res.json(publicCategories(rows));
+  });
+
+  app.get("/brands", (req, res) => {
+    const { rows } = loadPublicData();
+    res.json(publicBrands(rows));
+  });
+
+  app.get("/retailers", (req, res) => {
+    const { rows } = loadPublicData();
+    res.json(rows.retailers);
+  });
+
+  app.get("/products", (req, res) => {
+    const { rows } = loadPublicData();
+    res.json(rows.products);
+  });
+
+  app.get("/products/:product_id", (req, res) => {
+    const { rows } = loadPublicData();
+    const product = productById(rows, req.params.product_id);
+    if (!product) return res.status(404).json({ error: "product_not_found" });
+    return res.json(product);
+  });
+
+  app.get("/products/:product_id/specs", (req, res) => {
+    const { rows } = loadPublicData();
+    const product = productById(rows, req.params.product_id);
+    if (!product) return res.status(404).json({ error: "product_not_found" });
+    return res.json({ product_id: product.product_id, specs: {} });
+  });
+
+  app.get("/products/:product_id/offers", (req, res) => {
+    const { rows } = loadPublicData();
+    res.json(offersForProduct(rows, req.params.product_id));
+  });
+
+  app.get("/products/:product_id/price-history", (req, res) => {
+    const { rows } = loadPublicData();
+    res.json(priceHistoryForProduct(rows, req.params.product_id));
+  });
+
+  app.get("/search/products", (req, res) => {
+    const { rows } = loadPublicData();
+    res.json(searchPublicData(rows, req.query.q || "").products);
+  });
+
+  app.get("/specs", (req, res) => {
+    const { rows } = loadPublicData();
+    res.json(rows.products.map(product => ({ product_id: product.product_id, specs: {} })));
+  });
+
+  app.get("/offers", (req, res) => {
+    const { rows } = loadPublicData();
+    const productId = req.query.product_id;
+    res.json(productId ? offersForProduct(rows, productId) : rows.retailer_offers);
+  });
+
+  app.get("/offers/:retailer_offer_id/price-history", (req, res) => {
+    const { rows } = loadPublicData();
+    res.json(rows.price_snapshots.filter(row => row.retailer_offer_id === req.params.retailer_offer_id));
+  });
+
+  app.get("/deals", (req, res) => {
+    const { rows } = loadPublicData();
+    res.json(rows.retailer_offers.filter(offer => offer.current_price !== null && offer.current_price !== undefined && offer.current_price !== ""));
   });
 
   app.use((req, res) => {
