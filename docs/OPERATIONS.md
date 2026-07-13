@@ -198,6 +198,14 @@ npm run verify:candidates
 
 This validates and scores rows but does not mutate `db.json` unless `WRITE=true` is set. If `AUTO_PROMOTE=true` is set without `WRITE=true`, the run fails before work begins.
 
+Autonomous discovery dry-run, without a candidate file:
+
+```powershell
+$env:PIPELINE_MODE="production_sync"
+$env:DISCOVERY_MODE="auto"
+npm run pipeline:production:dry
+```
+
 Supervised write-capable verification:
 
 ```powershell
@@ -246,6 +254,25 @@ Production sync sequence:
 
 The orchestrator appends `pipeline_runs` only when `WRITE=true`. Dry-run pipeline runs print that the run history was not written.
 
+One-product autonomous pilot:
+
+```powershell
+$env:PIPELINE_MODE="production_sync"
+$env:DISCOVERY_MODE="auto"
+$env:WRITE="true"
+$env:AUTO_PROMOTE="true"
+$env:DISCOVERY_DRY_RUN="false"
+$env:PROMOTE_DRY_RUN="false"
+$env:TRACKER_DRY_RUN="false"
+$env:DISCOVERY_PRODUCT_ID="<product-id>"
+$env:DISCOVERY_RETAILER_ID="<retailer-id>"
+$env:DISCOVERY_MAX_PRODUCTS="1"
+$env:TRACKER_MAX_OFFERS="5"
+npm run pipeline:production
+```
+
+Do not run that against production data until the dry-run output shows the expected product, retailer, queries, candidates, and no hard conflicts.
+
 Scheduler controls:
 
 - `RUN_ON_START=false` disables immediate startup jobs.
@@ -264,3 +291,38 @@ The ingestion pipeline will not:
 - approve seed/demo pricing
 - generate fake price history
 - mutate `db.json` without `WRITE=true`
+
+## API and Worker Deployment
+
+The production deployment should separate the public API from the worker:
+
+- API service: `npm start`
+- Worker service: `npm run scheduler`
+- Shared persistent storage: the same `DB_FILE` path or volume
+
+Current JSON database limitation:
+
+- API and worker need shared persistent storage.
+- Horizontally scaled writers are unsafe without a centralized transactional database.
+- Start production with one API instance and one controlled worker.
+- A future PostgreSQL or managed database migration can replace JSON persistence later, but that is outside this branch.
+
+Public API deployment variables:
+
+- `NODE_ENV=production`
+- `PORT=8080`
+- `API_HOST=0.0.0.0`
+- `DB_FILE=/data/db.json`
+- `CORS_ALLOWED_ORIGINS=https://<base44-app-origin>`
+- `PUBLIC_API_BASE_URL=https://<buildwise-api-host>`
+
+Worker variables:
+
+- `PIPELINE_MODE=production_sync`
+- `DISCOVERY_MODE=auto`
+- `WRITE=true`
+- `AUTO_PROMOTE=true`
+- `PRODUCTION_SYNC_EVERY_MINUTES=1440`
+- `RUN_ON_START=false`
+
+Base44 setup is documented in `docs/BASE44_API_INTEGRATION.md`.

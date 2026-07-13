@@ -90,12 +90,21 @@ The ingestion pipeline is the controlled path for turning reviewed retailer prod
 Architecture:
 
 1. `ingestion_config.js` centralizes environment variables and blocks unsafe flag combinations.
-2. `retailer_adapters/` validates retailer domains and extracts page identity from product pages.
-3. `candidate_verification.js` scores product identity evidence and blocks hard conflicts.
-4. `retailer_ingestion.js` produces coverage review rows, evaluates candidate URLs, and optionally promotes matches.
-5. `verify_candidates.js` exposes the workflow as a CLI.
-6. `pipeline_orchestrator.js` sequences backup, migration, validation, discovery, verification, tracker, exports, and reports.
-7. `scheduler.js` can run the pipeline on intervals while preventing overlapping write-capable jobs.
+2. `discovery_sources/` discovers candidate URLs through retailer search fixtures/live hooks, approved search-provider files, or candidate-file fallback.
+3. `retailer_adapters/` validates retailer domains and extracts page identity from product pages.
+4. `candidate_verification.js` scores product identity evidence and blocks hard conflicts.
+5. `retailer_ingestion.js` produces coverage review rows, discovers candidates, evaluates candidate URLs, and optionally promotes matches.
+6. `verify_candidates.js` exposes the workflow as a CLI.
+7. `pipeline_orchestrator.js` sequences backup, migration, validation, discovery, verification, tracker, exports, and reports.
+8. `scheduler.js` can run the pipeline on intervals while preventing overlapping write-capable jobs.
+
+Discovery modes:
+
+- `DISCOVERY_MODE=auto`: generate retailer-specific queries and run configured autonomous search sources.
+- `DISCOVERY_MODE=file`: use only `DISCOVERY_CANDIDATE_FILE`.
+- `DISCOVERY_MODE=hybrid`: run autonomous discovery and include candidate-file rows.
+
+Normal production behavior is `auto`; a candidate CSV is optional and should not be required for ongoing operation.
 
 Automatic promotion is intentionally narrow. A candidate can promote only when:
 

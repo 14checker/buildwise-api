@@ -307,6 +307,82 @@ test("runRetailerIngestion dry-run does not mutate db tables", async () => {
   assert.equal(JSON.stringify(db), before);
 });
 
+test("autonomous discovery works without a candidate file", async () => {
+  const db = makeDb();
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "buildwise-search-fixtures-"));
+  fs.copyFileSync(fixture("exact_mpn_product.html"), path.join(fixtureDir, "exact_mpn_product.html"));
+  fs.writeFileSync(path.join(fixtureDir, "ret-newegg_cpu-9800x3d_search.html"), `
+    <a href="https://www.newegg.com/amd-ryzen-7-9800x3d/p/N82E16819113877" data-fixture="exact_mpn_product.html">AMD Ryzen 7 9800X3D</a>
+  `);
+
+  const summary = await runRetailerIngestion(db, {
+    write: true,
+    autoPromote: true,
+    autoPromoteExact: true,
+    autoPromoteStrong: true,
+    autoPromoteMinScore: 90,
+    discoveryMode: "auto",
+    discoverySearchFixtureDir: fixtureDir,
+    discoveryMaxProducts: 1,
+    discoveryTargetOffersPerProduct: 1
+  });
+
+  assert.equal(summary.discovery_mode, "auto");
+  assert.equal(summary.candidates_discovered, 1);
+  assert.equal(summary.promoted, 1);
+  assert.equal(db.retailer_offers.length, 1);
+  assert.equal(db.retailer_url_candidates.length, 2);
+});
+
+test("autonomous discovery suppresses duplicate normalized candidate URLs", async () => {
+  const db = makeDb();
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "buildwise-search-fixtures-"));
+  fs.copyFileSync(fixture("exact_mpn_product.html"), path.join(fixtureDir, "exact_mpn_product.html"));
+  fs.writeFileSync(path.join(fixtureDir, "ret-newegg_cpu-9800x3d_search.html"), `
+    <a href="https://www.newegg.com/amd-ryzen-7-9800x3d/p/N82E16819113877?utm_source=a" data-fixture="exact_mpn_product.html">AMD Ryzen 7 9800X3D</a>
+    <a href="https://newegg.com/amd-ryzen-7-9800x3d/p/N82E16819113877" data-fixture="exact_mpn_product.html">AMD Ryzen 7 9800X3D duplicate</a>
+  `);
+
+  const summary = await runRetailerIngestion(db, {
+    write: false,
+    autoPromote: false,
+    discoveryMode: "auto",
+    discoverySearchFixtureDir: fixtureDir,
+    discoveryMaxProducts: 1,
+    discoveryTargetOffersPerProduct: 1
+  });
+
+  assert.equal(summary.candidates_discovered, 1);
+});
+
+test("API filters, pagination headers, and CORS behavior are stable", async () => {
+  const db = makeDb();
+  await promoteOnce(db);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "buildwise-api-filter-test-"));
+  const dbFile = path.join(dir, "db.json");
+  core.writeDb(db, dbFile);
+  process.env.DB_FILE = dbFile;
+  process.env.CORS_ALLOWED_ORIGINS = "https://base44.example";
+
+  delete require.cache[require.resolve("../../public_api_server")];
+  const { createApp } = require("../../public_api_server");
+  const server = createApp().listen(0);
+  const port = server.address().port;
+
+  try {
+    const products = await getJsonWithStatus(`http://127.0.0.1:${port}/products?category_id=cpu&search=9800&limit=1&offset=0`, { Origin: "https://base44.example" });
+    const rejected = await getJsonWithStatus(`http://127.0.0.1:${port}/products`, { Origin: "https://elsewhere.example" });
+
+    assert.equal(products.statusCode, 200);
+    assert.equal(products.headers["x-total-count"], "1");
+    assert.equal(products.headers["access-control-allow-origin"], "https://base44.example");
+    assert.equal(products.json.length, 1);
+    assert.equal(rejected.statusCode, 403);
+  } finally {
+    server.close();
+  }
+});
+
 function getJson(url) {
   return new Promise((resolve, reject) => {
     http.get(url, response => {
@@ -318,6 +394,25 @@ function getJson(url) {
       response.on("end", () => {
         try {
           resolve(JSON.parse(body));
+        } catch (error) {
+          reject(error);
+        }
+      });
+    }).on("error", reject);
+  });
+}
+
+function getJsonWithStatus(url, headers = {}) {
+  return new Promise((resolve, reject) => {
+    http.get(url, { headers }, response => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", chunk => {
+        body += chunk;
+      });
+      response.on("end", () => {
+        try {
+          resolve({ statusCode: response.statusCode, headers: response.headers, json: body ? JSON.parse(body) : null });
         } catch (error) {
           reject(error);
         }

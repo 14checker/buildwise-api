@@ -531,12 +531,14 @@ async function runAll() {
     admin_review_queue: db.admin_review_queue.length
   };
 
-  const targets = core.getScrapeTargets(db, {
-    maxOffers: MAX_OFFERS,
-    category: CATEGORY_FILTER,
-    retailer: RETAILER_FILTER,
-    includeMissingUrls: true
-  });
+  const targets = MAX_OFFERS === 0
+    ? []
+    : core.getScrapeTargets(db, {
+      maxOffers: MAX_OFFERS,
+      category: CATEGORY_FILTER,
+      retailer: RETAILER_FILTER,
+      includeMissingUrls: true
+    });
 
   const runData = {
     newSnapshots: [],

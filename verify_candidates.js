@@ -36,7 +36,7 @@ async function main() {
   }
 
   const hashAfter = publicDataMetrics.hashFile(config.dbFile);
-  console.log("BUILDWISE_INGESTION_SUMMARY " + JSON.stringify({
+  const output = {
     db_file: config.dbFile,
     db_hash_before: hashBefore,
     db_hash_after: hashAfter,
@@ -45,7 +45,9 @@ async function main() {
     auto_promote_enabled: Boolean(config.autoPromote),
     allow_live_fetch: Boolean(config.allowLiveFetch),
     ...summary
-  }, null, 2));
+  };
+  console.log("BUILDWISE_INGESTION_SUMMARY_JSON " + JSON.stringify(output));
+  console.log("BUILDWISE_INGESTION_SUMMARY " + JSON.stringify(output, null, 2));
 }
 
 if (require.main === module) {

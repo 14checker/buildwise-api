@@ -56,13 +56,33 @@ function isSearchOrCategoryUrl(url) {
 
 function buildSearchQueries(product, retailerName) {
   const base = [product.brand, product.model].filter(Boolean).join(" ").trim();
+  const quotedBase = base ? `"${base}"` : "";
   const category = String(product.category_id || product.category || "").toLowerCase();
+  const mpn = normalizeText(product.mpn || product.manufacturer_part_number || product.manufacturerPartNumber);
   const descriptors = category === "cpu"
     ? ["CPU", "processor", "desktop processor"]
     : category === "gpu"
       ? ["graphics card", "GPU"]
       : ["pc component"];
-  return descriptors.map(descriptor => `${base} ${descriptor} ${retailerName}`.replace(/\s+/g, " ").trim());
+  const queries = [];
+  if (mpn) queries.push(`"${mpn}"`);
+  if (base) queries.push(quotedBase);
+  if (base && retailerName) queries.push(`site:${String(retailerName).toLowerCase().replace(/\s+/g, "")}.com ${quotedBase}`);
+  for (const descriptor of descriptors) queries.push(`${base} ${descriptor} ${retailerName}`.replace(/\s+/g, " ").trim());
+  return [...new Set(queries.filter(Boolean))];
+}
+
+function buildRetailerSearchUrl(retailerId, query) {
+  const encoded = encodeURIComponent(String(query || "").replace(/^site:[^\s]+\s+/i, "").replace(/"/g, ""));
+  if (!encoded) return "";
+  const id = String(retailerId || "").toLowerCase();
+  if (id.includes("amazon")) return `https://www.amazon.com/s?k=${encoded}`;
+  if (id.includes("bestbuy")) return `https://www.bestbuy.com/site/searchpage.jsp?st=${encoded}`;
+  if (id.includes("newegg")) return `https://www.newegg.com/p/pl?d=${encoded}`;
+  if (id.includes("microcenter")) return `https://www.microcenter.com/search/search_results.aspx?Ntt=${encoded}`;
+  if (id.includes("walmart")) return `https://www.walmart.com/search?q=${encoded}`;
+  if (id.includes("bh")) return `https://www.bhphotovideo.com/c/search?Ntt=${encoded}`;
+  return "";
 }
 
 async function fetchCandidatePage(url, config = {}) {
@@ -221,6 +241,7 @@ function createAdapter({ retailerId, name, domains, queryName = name }) {
     name,
     domains,
     buildSearchQueries: product => buildSearchQueries(product, queryName),
+    buildSearchUrl: query => buildRetailerSearchUrl(retailerId, query),
     normalizeUrl,
     validateCandidateUrl(url) {
       if (!url) return "missing_url";
@@ -236,6 +257,7 @@ function createAdapter({ retailerId, name, domains, queryName = name }) {
 
 module.exports = {
   buildSearchQueries,
+  buildRetailerSearchUrl,
   createAdapter,
   extractIdentity,
   extractOffer,

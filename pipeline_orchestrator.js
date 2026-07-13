@@ -49,14 +49,13 @@ function stepsForMode(mode) {
       ["migrate_db.js", { WRITE: write ? "true" : "" }],
       ["validate_db.js", {}],
       ["audit_db.js", {}],
-      ["compliance_audit.js", {}],
-      ["discover_products.js", { DRY_RUN: safeDiscoveryDryRun }],
       ["verify_candidates.js", {}],
       ["group_products.js", {}],
       ["promote_candidates.js", { DRY_RUN: safePromoteDryRun, AUTO_PROMOTE: process.env.AUTO_PROMOTE || "false" }],
       ["tracker_updated.js", { DRY_RUN: safeTrackerDryRun, MAX_OFFERS: process.env.TRACKER_MAX_OFFERS || "25", REQUIRE_APPROVED_SOURCE: process.env.REQUIRE_APPROVED_SOURCE || "true" }],
       ["alert_engine.js", { DRY_RUN: process.env.ALERT_DRY_RUN || "true" }],
       ["data_quality_audit.js", {}],
+      ["compliance_audit.js", {}],
       ["export_public_json.js", {}],
       ["export_base44_tables.js", {}],
       ["pipeline_status.js", {}],
@@ -76,13 +75,73 @@ function stepsForMode(mode) {
 function runStep(script, env) {
   console.log(`\n=== Running ${script} ===`);
   const result = spawnSync(process.execPath, [script], {
-    stdio: "inherit",
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
     shell: false,
     env: { ...process.env, DB_FILE, PIPELINE_MODE: MODE, ...env }
   });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${script} failed with code ${result.status}`);
-  return { script, status: "complete" };
+
+  const step = { script, status: "complete" };
+  const marker = (result.stdout || "").split(/\r?\n/).find(line => line.startsWith("BUILDWISE_INGESTION_SUMMARY_JSON "));
+  if (marker) {
+    try {
+      step.summary = JSON.parse(marker.replace("BUILDWISE_INGESTION_SUMMARY_JSON ", ""));
+    } catch (error) {
+      step.summary_parse_error = error.message;
+    }
+  }
+  return step;
+}
+
+function emptyCounts() {
+  return {
+    products_evaluated: 0,
+    products_needing_coverage: 0,
+    queries_generated: 0,
+    search_sources_called: 0,
+    candidates_discovered: 0,
+    candidate_pages_fetched: 0,
+    candidates_verified: 0,
+    candidates_promoted: 0,
+    candidates_rejected: 0,
+    candidates_review_required: 0,
+    offers_inserted: 0,
+    offers_updated: 0,
+    price_changes: 0,
+    availability_changes: 0,
+    snapshots_inserted: 0,
+    api_records_available: 0,
+    tracker_failures: 0
+  };
+}
+
+function countsFromSteps(steps) {
+  const counts = emptyCounts();
+  for (const step of steps) {
+    const summary = step.summary || {};
+    counts.products_evaluated += Number(summary.products_evaluated || 0);
+    counts.products_needing_coverage += Number(summary.products_needing_coverage || 0);
+    counts.queries_generated += Number(summary.queries_generated || 0);
+    counts.search_sources_called += Number(summary.search_sources_called || 0);
+    counts.candidates_discovered += Number(summary.candidates_discovered || summary.candidate_rows || 0);
+    counts.candidate_pages_fetched += Number(summary.candidate_pages_fetched || 0);
+    counts.candidates_verified += Number(summary.verified || 0);
+    counts.candidates_promoted += Number(summary.promoted || 0);
+    counts.candidates_rejected += Number(summary.rejected || 0);
+    counts.candidates_review_required += Number(summary.review_required || 0);
+    counts.offers_inserted += Number(summary.offers_inserted || 0);
+    counts.offers_updated += Number(summary.offers_updated || 0);
+    counts.snapshots_inserted += Number(summary.snapshots_inserted || 0);
+  }
+  return counts;
+}
+
+function warningsFromSteps(steps) {
+  return steps.flatMap(step => step.summary?.discovery_errors || []);
 }
 
 function appendPipelineRun(status, startedAt, steps, error = null) {
@@ -99,6 +158,9 @@ function appendPipelineRun(status, startedAt, steps, error = null) {
     status,
     started_at: startedAt,
     finished_at: core.nowBase44DateTime(),
+    counts: countsFromSteps(steps),
+    warnings: warningsFromSteps(steps),
+    errors: error ? [error.message] : [],
     steps,
     error: error ? error.message : null
   };
@@ -137,5 +199,6 @@ if (require.main === module) {
 }
 
 module.exports = {
+  countsFromSteps,
   stepsForMode
 };

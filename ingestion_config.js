@@ -47,6 +47,7 @@ function loadIngestionConfig(overrides = {}) {
     allowMarketplace: envFlag("ALLOW_MARKETPLACE", false),
     allowRefurbished: envFlag("ALLOW_REFURBISHED", false),
     discoveryDryRun: envFlag("DISCOVERY_DRY_RUN", !write),
+    discoveryMode: normalizeKey(process.env.DISCOVERY_MODE || "auto"),
     promoteDryRun: envFlag("PROMOTE_DRY_RUN", !write),
     trackerDryRun: envFlag("TRACKER_DRY_RUN", !write),
     discoveryMaxProducts: envNumber("DISCOVERY_MAX_PRODUCTS", 25),
@@ -57,6 +58,10 @@ function loadIngestionConfig(overrides = {}) {
     discoveryProductId: process.env.DISCOVERY_PRODUCT_ID || "",
     discoveryRetailerId: process.env.DISCOVERY_RETAILER_ID || "",
     discoveryCandidateFile: process.env.DISCOVERY_CANDIDATE_FILE || "",
+    discoverySearchFixtureDir: process.env.DISCOVERY_SEARCH_FIXTURE_DIR || "",
+    discoverySearchProviderFile: process.env.DISCOVERY_SEARCH_PROVIDER_FILE || "",
+    discoveryMaxQueriesPerProduct: envNumber("DISCOVERY_MAX_QUERIES_PER_PRODUCT", 4),
+    discoveryMaxCandidatesPerQuery: envNumber("DISCOVERY_MAX_CANDIDATES_PER_QUERY", 5),
     allowLiveFetch: envFlag("INGESTION_ALLOW_LIVE_FETCH", false),
     httpTimeoutMs: envNumber("HTTP_TIMEOUT_MS", 15000),
     httpMaxRetries: envNumber("HTTP_MAX_RETRIES", 2),
@@ -74,6 +79,12 @@ function validateIngestionConfig(config) {
 
   if (config.autoPromote && !config.write) {
     errors.push("AUTO_PROMOTE=true requires WRITE=true.");
+  }
+  if (!["auto", "file", "hybrid"].includes(normalizeKey(config.discoveryMode))) {
+    errors.push("DISCOVERY_MODE must be one of: auto, file, hybrid.");
+  }
+  if (normalizeKey(config.discoveryMode) === "file" && !config.discoveryCandidateFile) {
+    errors.push("DISCOVERY_MODE=file requires DISCOVERY_CANDIDATE_FILE.");
   }
   if (config.pipelineMode === "production_sync" && config.write && config.discoveryDryRun && config.trackerDryRun && config.promoteDryRun) {
     warnings.push("production_sync is write-enabled, but discovery, tracker, and promote stages are all dry-run.");

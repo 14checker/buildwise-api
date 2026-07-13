@@ -206,7 +206,7 @@ function buildBase44Readiness(safety, options = {}) {
 
   return {
     base44_ready: ready,
-    base44_update_mode: ready ? (apiSmokePassed ? "api_ready" : "csv_ready") : "blocked",
+    base44_update_mode: ready ? (options.publicApiLive ? "api_live" : apiSmokePassed ? "api_ready" : "csv_ready") : "blocked",
     base44_should_pull: ready,
     base44_blocked_reason: ready ? null : "public_export_safety_or_export_failure"
   };

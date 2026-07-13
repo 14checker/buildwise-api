@@ -9,56 +9,14 @@
  * By default this is read-only. Database writes and automatic promotion require WRITE=true plus AUTO_PROMOTE=true.
  */
 const fs = require("fs");
-const path = require("path");
 const core = require("./buildwise_backend_core");
 const { adapterForRetailer } = require("./retailer_adapters");
 const { normalizeUrl } = require("./retailer_adapters/generic");
 const verification = require("./candidate_verification");
+const { discoverAutoCandidates, discoverFileCandidates } = require("./discovery_sources");
 
 function normalizeKey(value) {
   return String(value || "").trim().toLowerCase();
-}
-
-function parseCsvLine(line) {
-  const values = [];
-  let current = "";
-  let quoted = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i];
-    if (char === '"' && quoted && line[i + 1] === '"') {
-      current += '"';
-      i += 1;
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (char === "," && !quoted) {
-      values.push(current);
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  values.push(current);
-  return values;
-}
-
-function readCsv(filePath) {
-  const raw = fs.readFileSync(filePath, "utf8").replace(/^\uFEFF/, "");
-  const lines = raw.split(/\r?\n/).filter(line => line.trim());
-  if (!lines.length) return [];
-  const headers = parseCsvLine(lines[0]).map(header => header.trim());
-  return lines.slice(1).map(line => {
-    const values = parseCsvLine(line);
-    return Object.fromEntries(headers.map((header, index) => [header, values[index] || ""]));
-  });
-}
-
-function readJsonOrCsv(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  if (ext === ".csv") return readCsv(filePath);
-  const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  if (Array.isArray(parsed)) return parsed;
-  if (Array.isArray(parsed.candidates)) return parsed.candidates;
-  throw new Error(`Candidate file must be an array or contain a candidates array: ${filePath}`);
 }
 
 function ensureIngestionTables(db) {
@@ -105,7 +63,7 @@ function productNeedsCoverage(db, product, retailers, config = {}) {
   });
 }
 
-function analyzeProductCoverage(db, config = {}) {
+function coverageTargets(db, config = {}) {
   const retailers = activeRetailers(db, config);
   let products = (db.products || []).filter(product => {
     if (config.discoveryProductId && product.product_id !== config.discoveryProductId) return false;
@@ -117,7 +75,15 @@ function analyzeProductCoverage(db, config = {}) {
     .filter(product => productNeedsCoverage(db, product, retailers, config))
     .slice(0, Math.max(0, Number(config.discoveryMaxProducts || 25)));
 
-  return products.flatMap(product => retailers.map(retailer => {
+  return products.flatMap(product => retailers.map(retailer => ({
+    product,
+    retailer,
+    adapter: adapterForRetailer(retailer)
+  })));
+}
+
+function analyzeProductCoverage(db, config = {}) {
+  return coverageTargets(db, config).map(({ product, retailer }) => {
     const adapter = adapterForRetailer(retailer);
     return {
       product_id: product.product_id,
@@ -128,24 +94,11 @@ function analyzeProductCoverage(db, config = {}) {
       recommended_action: "review_retailer_search_results",
       search_queries: adapter ? adapter.buildSearchQueries(product) : []
     };
-  }));
+  });
 }
 
 function loadCandidateInputs(config = {}) {
-  if (!config.discoveryCandidateFile) return [];
-  if (!fs.existsSync(config.discoveryCandidateFile)) {
-    throw new Error(`DISCOVERY_CANDIDATE_FILE not found: ${config.discoveryCandidateFile}`);
-  }
-  return readJsonOrCsv(config.discoveryCandidateFile).map(row => ({
-    product_id: row.product_id || row.productId || row.product,
-    retailer_id: row.retailer_id || row.retailerId || row.retailer,
-    candidate_url: row.candidate_url || row.url || row.retailer_product_url,
-    expected_retailer_sku: row.expected_retailer_sku || row.retailer_sku || row.sku,
-    html_path: row.html_path || row.fixture_path || row.local_html_path,
-    page_html: row.page_html,
-    source: row.source || "candidate_file",
-    reviewer_notes: row.reviewer_notes || row.notes || ""
-  })).filter(row => row.product_id && row.retailer_id);
+  return discoverFileCandidates(config);
 }
 
 function nextCandidateId(db) {
@@ -220,7 +173,12 @@ async function evaluateCandidate(db, rawCandidate, config = {}) {
     product_id: candidate.product_id,
     retailer_id: candidate.retailer_id,
     candidate_url: candidate.candidate_url,
-    source: candidate.source || "candidate_file",
+    source: candidate.source || candidate.discovery_source || "candidate_file",
+    discovery_source: candidate.discovery_source || candidate.source || "candidate_file",
+    discovery_query: candidate.discovery_query || "",
+    discovery_source_url: candidate.discovery_source_url || "",
+    discovered_at: candidate.discovered_at || now,
+    source_rank: candidate.source_rank || null,
     reviewed_at: null,
     last_evaluated_at: now,
     promotion_status: "not_promoted",
@@ -231,7 +189,7 @@ async function evaluateCandidate(db, rawCandidate, config = {}) {
     return {
       status: "rejected",
       reason: !product ? "unknown_product" : !retailer ? "unknown_retailer" : "unsupported_retailer",
-      candidate_record: { ...baseRecord, match_status: "rejected", match_score: 0 }
+      candidate_record: { ...baseRecord, match_status: "rejected", match_score: 0, page_fetched: false }
     };
   }
 
@@ -240,7 +198,7 @@ async function evaluateCandidate(db, rawCandidate, config = {}) {
     return {
       status: "rejected",
       reason: urlIssue,
-      candidate_record: { ...baseRecord, match_status: "rejected", match_score: 0, hard_conflicts: [{ field: "url", reason: urlIssue }] }
+      candidate_record: { ...baseRecord, match_status: "rejected", match_score: 0, page_fetched: false, hard_conflicts: [{ field: "url", reason: urlIssue }] }
     };
   }
 
@@ -248,7 +206,7 @@ async function evaluateCandidate(db, rawCandidate, config = {}) {
     return {
       status: "rejected",
       reason: "duplicate_url_for_different_offer",
-      candidate_record: { ...baseRecord, match_status: "rejected", match_score: 0, hard_conflicts: [{ field: "candidate_url", reason: "duplicate_url_for_different_offer" }] }
+      candidate_record: { ...baseRecord, match_status: "rejected", match_score: 0, page_fetched: false, hard_conflicts: [{ field: "candidate_url", reason: "duplicate_url_for_different_offer" }] }
     };
   }
 
@@ -258,7 +216,7 @@ async function evaluateCandidate(db, rawCandidate, config = {}) {
     return {
       status: "review_required",
       reason: page.error || "page_fetch_failed",
-      candidate_record: { ...baseRecord, match_status: "review_required", match_score: 0, missing_identity_fields: ["page_identity"] }
+      candidate_record: { ...baseRecord, match_status: "review_required", match_score: 0, page_fetched: false, missing_identity_fields: ["page_identity"] }
     };
   }
 
@@ -304,6 +262,10 @@ async function evaluateCandidate(db, rawCandidate, config = {}) {
     candidate_record: {
       ...baseRecord,
       canonical_url: identity.canonical_url || candidate.candidate_url,
+      page_fetched: true,
+      http_status: page.http_status || 200,
+      extracted_identity: identity,
+      extracted_offer: offerData,
       match_status: evaluation.match_status,
       match_score: evaluation.match_score,
       match_reasons: evaluation.match_reasons,
@@ -318,7 +280,36 @@ async function evaluateCandidate(db, rawCandidate, config = {}) {
 async function runRetailerIngestion(db, config = {}) {
   ensureIngestionTables(db);
   const generatedReviews = analyzeProductCoverage(db, config);
-  const inputs = loadCandidateInputs(config);
+  const targets = coverageTargets(db, config);
+  const discoveryMode = normalizeKey(config.discoveryMode || (config.discoveryCandidateFile ? "hybrid" : "auto"));
+  const discoveryStats = {
+    queries_generated: 0,
+    search_sources_called: 0,
+    errors: []
+  };
+  let inputs = [];
+
+  if (["auto", "hybrid"].includes(discoveryMode)) {
+    for (const { product, retailer } of targets) {
+      const result = await discoverAutoCandidates(product, retailer, config);
+      inputs.push(...result.candidates);
+      discoveryStats.queries_generated += Number(result.stats?.queries_generated || 0);
+      discoveryStats.search_sources_called += Number(result.stats?.search_sources_called || 0);
+      discoveryStats.errors.push(...(result.stats?.errors || []));
+    }
+  }
+
+  if (["file", "hybrid"].includes(discoveryMode)) {
+    inputs.push(...loadCandidateInputs(config));
+  }
+
+  const seenInputs = new Set();
+  inputs = inputs.filter(input => {
+    const key = candidateKey(input);
+    if (!input.candidate_url || seenInputs.has(key)) return false;
+    seenInputs.add(key);
+    return true;
+  });
   const results = [];
 
   for (const input of inputs) {
@@ -342,14 +333,27 @@ async function runRetailerIngestion(db, config = {}) {
   const wouldPromote = results.filter(result => result.status === "would_promote").length;
   const rejected = results.filter(result => result.status === "rejected").length;
   const reviewRequired = results.filter(result => ["review_required", "provisional"].includes(result.status)).length;
+  const verified = results.filter(result => ["promoted", "would_promote", "verified_exact", "verified_strong"].includes(result.status)).length;
 
   return {
+    products_evaluated: new Set(targets.map(target => target.product.product_id)).size,
+    products_needing_coverage: new Set(generatedReviews.map(row => row.product_id)).size,
     generated_review_rows: generatedReviews.length,
+    discovery_mode: discoveryMode,
+    queries_generated: discoveryStats.queries_generated,
+    search_sources_called: discoveryStats.search_sources_called,
+    discovery_errors: discoveryStats.errors,
+    candidates_discovered: inputs.length,
     candidate_rows: inputs.length,
     promoted,
     would_promote: wouldPromote,
     rejected,
+    verified,
     review_required: reviewRequired,
+    candidate_pages_fetched: results.filter(result => result.candidate_record.page_fetched).length,
+    offers_inserted: results.filter(result => result.upsert?.inserted).length,
+    offers_updated: results.filter(result => result.upsert?.updated).length,
+    snapshots_inserted: results.filter(result => result.upsert?.snapshot).length,
     write_enabled: Boolean(config.write),
     auto_promote_enabled: Boolean(config.autoPromote),
     results: results.map(result => ({
@@ -370,9 +374,11 @@ async function runRetailerIngestion(db, config = {}) {
 
 module.exports = {
   analyzeProductCoverage,
+  coverageTargets,
   duplicateUrlExists,
   ensureIngestionTables,
   evaluateCandidate,
   loadCandidateInputs,
+  upsertCandidateRecord,
   runRetailerIngestion
 };

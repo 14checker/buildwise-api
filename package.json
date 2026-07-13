@@ -6,6 +6,7 @@
   "main": "tracker_updated.js",
   "scripts": {
     "convert:xlsx": "node xlsx_to_json.js",
+    "start": "node public_api_server.js",
     "validate:db": "node validate_db.js",
     "group:products": "node group_products.js",
     "seed:discovery": "node seed_discovery_sources.js",
@@ -28,6 +29,7 @@
     "promote:safe": "node promote_candidates.js",
     "test:ingestion": "node --test tests/ingestion/*.test.js",
     "smoke:ingestion": "node scripts/smoke_ingestion.js",
+    "smoke:base44": "node scripts/smoke_base44.js",
     "seed:sources": "node seed_data_sources.js",
     "audit:compliance": "node compliance_audit.js",
     "status:pipeline": "node pipeline_status.js",
@@ -39,10 +41,10 @@
     "export:json": "node export_public_json.js",
     "api:public": "node public_api_server.js",
     "data:run": "node buildwise_data_run.js",
-    "check:safe": "node --check public_api_server.js && node --check buildwise_data_run.js && node --check export_public_json.js && node --check public_data_metrics.js && node --check export_base44_tables.js && node --check public_serializers.js && node --check url_matcher.js && node --check url_quality.js && node --check ingestion_config.js && node --check retailer_ingestion.js && node --check verify_candidates.js && node --check candidate_verification.js && node --check scripts/smoke_ingestion.js && node --check scripts/run_production_pipeline.js",
+    "check:safe": "node --check public_api_server.js && node --check buildwise_data_run.js && node --check export_public_json.js && node --check public_data_metrics.js && node --check export_base44_tables.js && node --check public_serializers.js && node --check url_matcher.js && node --check url_quality.js && node --check ingestion_config.js && node --check retailer_ingestion.js && node --check verify_candidates.js && node --check candidate_verification.js && node --check discovery_sources/index.js && node --check discovery_sources/retailer_search.js && node --check discovery_sources/search_provider.js && node --check discovery_sources/candidate_file.js && node --check scripts/smoke_ingestion.js && node --check scripts/smoke_base44.js && node --check scripts/run_production_pipeline.js",
     "report:admin": "node generate_admin_report.js",
     "pipeline": "node pipeline_orchestrator.js",
-    "check:syntax": "node --check buildwise_backend_core.js && node --check tracker_updated.js && node --check discover_products.js && node --check group_products.js && node --check promote_candidates.js && node --check scheduler.js && node --check pipeline_orchestrator.js && node --check source_governance.js && node --check compliance_audit.js && node --check data_quality_audit.js && node --check alert_engine.js && node --check export_base44_tables.js && node --check generate_admin_report.js && node --check ingestion_config.js && node --check retailer_ingestion.js && node --check verify_candidates.js && node --check candidate_verification.js && node --check retailer_adapters/index.js && node --check retailer_adapters/generic.js && node --check retailer_adapters/amazon.js && node --check retailer_adapters/bestbuy.js && node --check retailer_adapters/newegg.js && node --check retailer_adapters/microcenter.js && node --check retailer_adapters/walmart.js && node --check retailer_adapters/bh.js && node --check scripts/run_production_pipeline.js && node --check scripts/smoke_ingestion.js"
+    "check:syntax": "node --check buildwise_backend_core.js && node --check tracker_updated.js && node --check discover_products.js && node --check group_products.js && node --check promote_candidates.js && node --check scheduler.js && node --check pipeline_orchestrator.js && node --check source_governance.js && node --check compliance_audit.js && node --check data_quality_audit.js && node --check alert_engine.js && node --check export_base44_tables.js && node --check generate_admin_report.js && node --check ingestion_config.js && node --check retailer_ingestion.js && node --check verify_candidates.js && node --check candidate_verification.js && node --check discovery_sources/index.js && node --check discovery_sources/retailer_search.js && node --check discovery_sources/search_provider.js && node --check discovery_sources/candidate_file.js && node --check retailer_adapters/index.js && node --check retailer_adapters/generic.js && node --check retailer_adapters/amazon.js && node --check retailer_adapters/bestbuy.js && node --check retailer_adapters/newegg.js && node --check retailer_adapters/microcenter.js && node --check retailer_adapters/walmart.js && node --check retailer_adapters/bh.js && node --check scripts/run_production_pipeline.js && node --check scripts/smoke_ingestion.js && node --check scripts/smoke_base44.js"
   },
   "dependencies": {
     "axios": "latest",
