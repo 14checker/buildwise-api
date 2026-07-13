@@ -24,6 +24,7 @@ function emptyDb() {
     discovery_sources: [],
     discovered_products: [],
     discovered_offers: [],
+    retailer_url_candidates: [],
     product_insert_queue: [],
     component_spec_insert_queue: [],
     promotion_log: [],
@@ -95,7 +96,9 @@ function readDb(dbFile = DEFAULT_DB_FILE) {
 
 function writeDb(db, dbFile = DEFAULT_DB_FILE) {
   validateDb(db);
-  fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
+  const tmpFile = `${dbFile}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tmpFile, JSON.stringify(db, null, 2));
+  fs.renameSync(tmpFile, dbFile);
 }
 
 function validateDb(db) {
@@ -172,6 +175,7 @@ function getSummary(db) {
     discovery_sources: Array.isArray(db.discovery_sources) ? db.discovery_sources.length : 0,
     discovered_products: Array.isArray(db.discovered_products) ? db.discovered_products.length : 0,
     discovered_offers: Array.isArray(db.discovered_offers) ? db.discovered_offers.length : 0,
+    retailer_url_candidates: Array.isArray(db.retailer_url_candidates) ? db.retailer_url_candidates.length : 0,
     product_insert_queue: Array.isArray(db.product_insert_queue) ? db.product_insert_queue.length : 0,
     component_spec_insert_queue: Array.isArray(db.component_spec_insert_queue) ? db.component_spec_insert_queue.length : 0,
     promotion_log: Array.isArray(db.promotion_log) ? db.promotion_log.length : 0,
@@ -238,11 +242,29 @@ function addPriceSnapshot(db, offer, result, scrapedAt) {
     price: Number(result.price),
     shipping: Number(result.shipping || 0),
     availability: result.availability || "In Stock",
-    scraped_at: scrapedAt || result.scraped_at || nowBase44DateTime()
+    scraped_at: scrapedAt || result.scraped_at || nowBase44DateTime(),
+    currency: result.currency || "USD",
+    seller_name: result.seller_name || offer.seller_name || null,
+    condition: result.condition || offer.condition || null,
+    source: result.source || "tracker"
   };
 
   db.price_snapshots.push(snapshot);
   return snapshot;
+}
+
+function latestPriceSnapshot(db, offerId) {
+  return (db.price_snapshots || [])
+    .filter(snapshot => snapshot.retailer_offer_id === offerId || snapshot.offer_id === offerId)
+    .sort((a, b) => new Date(b.scraped_at || b.captured_at || 0) - new Date(a.scraped_at || a.captured_at || 0))[0] || null;
+}
+
+function scrapeValuesChanged(previous = {}, current = {}) {
+  return ["price", "availability", "shipping", "currency", "seller_name", "condition"].some(field => {
+    const oldValue = field === "price" || field === "shipping" ? safeNumber(previous[field]) : normalizeKey(previous[field]);
+    const newValue = field === "price" || field === "shipping" ? safeNumber(current[field]) : normalizeKey(current[field]);
+    return oldValue !== newValue;
+  });
 }
 
 function addScrapeError(db, payload = {}) {
@@ -373,21 +395,36 @@ function applyScrapeResult(db, result = {}) {
     };
   }
 
-  offer.current_price = Number(result.price);
-  offer.availability = result.availability || "In Stock";
+  const currentValues = {
+    price: Number(result.price),
+    shipping: Number(result.shipping || 0),
+    availability: result.availability || "In Stock",
+    currency: result.currency || "USD",
+    seller_name: result.seller_name || offer.seller_name || null,
+    condition: result.condition || offer.condition || null
+  };
+  const previousSnapshot = latestPriceSnapshot(db, offer.retailer_offer_id);
+
+  offer.current_price = currentValues.price;
+  offer.availability = currentValues.availability;
+  if (currentValues.seller_name) offer.seller_name = currentValues.seller_name;
+  if (currentValues.condition) offer.condition = currentValues.condition;
   offer.last_scraped_at = scrapedAt;
 
-  const snapshot = addPriceSnapshot(db, offer, { ...result, scraped_at: scrapedAt }, scrapedAt);
+  const changed = !previousSnapshot || scrapeValuesChanged(previousSnapshot, currentValues);
+  const snapshot = changed
+    ? addPriceSnapshot(db, offer, { ...result, ...currentValues, scraped_at: scrapedAt }, scrapedAt)
+    : null;
   updateScrapeJob(db, offer.retailer_id, scrapedAt);
 
   return {
-    status: "updated",
+    status: changed ? "updated" : "unchanged",
     retailer_offer_id: offer.retailer_offer_id,
     product_id: offer.product_id,
     retailer_id: offer.retailer_id,
-    snapshot_id: snapshot.snapshot_id,
-    price: snapshot.price,
-    availability: snapshot.availability,
+    snapshot_id: snapshot ? snapshot.snapshot_id : null,
+    price: currentValues.price,
+    availability: currentValues.availability,
     snapshot
   };
 }
@@ -412,6 +449,8 @@ module.exports = {
   getScrapeTargets,
   getScrapeUrl,
   getSummary,
+  latestPriceSnapshot,
+  scrapeValuesChanged,
   applyScrapeResult,
   applyScrapeFailure,
   addScrapeError,

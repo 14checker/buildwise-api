@@ -71,7 +71,13 @@ Run:
 npm run api:public
 ```
 
-The API serves only public serializer output. Base44 can call the public API without a GitHub token. Configure CORS with `BASE44_ALLOWED_ORIGINS` before production use.
+Production start:
+
+```powershell
+npm start
+```
+
+The API serves only public serializer output. Base44 can call the public API without a GitHub token. Configure CORS with `CORS_ALLOWED_ORIGINS` before production use.
 
 Public routes:
 
@@ -85,6 +91,22 @@ Public routes:
 - `GET /public/price-history`
 - `GET /public/price-history?product_id=<id>`
 - `GET /public/search?q=<query>`
+
+Base44 app routes are also available:
+
+- `GET /categories`
+- `GET /brands`
+- `GET /retailers`
+- `GET /products`
+- `GET /products/:product_id`
+- `GET /products/:product_id/offers`
+- `GET /products/:product_id/price-history`
+- `GET /offers`
+- `GET /offers/:retailer_offer_id/price-history`
+- `GET /deals`
+- `GET /search/products?q=<query>`
+
+See [Base44 API Integration](docs/BASE44_API_INTEGRATION.md).
 
 ## Automated Data-Run Workflow
 
@@ -172,6 +194,71 @@ Longer term, BuildWise should move this private source of truth to managed stora
 
 Unverified, placeholder, wrong-domain, search-page, or low-confidence URLs stay hidden from public outputs.
 
+## Automated Retailer Ingestion Pipeline
+
+This branch adds the first controlled retailer ingestion path for production readiness. It is designed to reduce manual URL work without weakening the public safety model.
+
+Pipeline sequence:
+
+1. Find products that need retailer coverage.
+2. Generate review rows and search queries for supported retailers.
+3. Evaluate reviewed candidate product-page URLs.
+4. Extract page identity from JSON-LD/meta data or approved local fixtures.
+5. Score the candidate against BuildWise product identity using brand, model, MPN, SKU, category, and hard conflict checks.
+6. Reject wrong-domain, search/category, bundle, refurbished, capacity-mismatch, and model-mismatch candidates.
+7. Promote only verified exact or strong matches when `WRITE=true` and `AUTO_PROMOTE=true`.
+8. Update offers and create price snapshots only when values meaningfully change.
+9. Export public-safe CSV/JSON/API output through `public_serializers.js`.
+
+Safe commands:
+
+```powershell
+npm run verify:candidates
+npm run smoke:ingestion
+npm run smoke:base44
+npm run test:ingestion
+npm run pipeline:production:dry
+```
+
+Production-style command, still dry-run unless write flags are added:
+
+```powershell
+$env:PIPELINE_MODE="production_sync"
+$env:DISCOVERY_MODE="auto"
+npm run pipeline:production
+```
+
+Write-capable promotion requires all of the following:
+
+- `WRITE=true`
+- `AUTO_PROMOTE=true`
+- candidate page identity available through a reviewed URL plus live fetch approval or local fixture/page HTML
+- no hard conflicts
+- verified exact match or strong match above `AUTO_PROMOTE_MIN_SCORE`
+
+Live retailer fetching is disabled by default. Set `INGESTION_ALLOW_LIVE_FETCH=true` only for approved low-volume connector checks that respect retailer terms. The pipeline does not bypass login, CAPTCHA, robots controls, blocks, or rate limits.
+
+Supported adapter files live under `retailer_adapters/` for Amazon, Best Buy, B&H, Micro Center, Newegg, and Walmart. Unsupported retailers fall back to a generic domain-aware adapter.
+
+One-product autonomous pilot, without a candidate CSV:
+
+```powershell
+$env:PIPELINE_MODE="production_sync"
+$env:DISCOVERY_MODE="auto"
+$env:WRITE="true"
+$env:AUTO_PROMOTE="true"
+$env:DISCOVERY_DRY_RUN="false"
+$env:PROMOTE_DRY_RUN="false"
+$env:TRACKER_DRY_RUN="false"
+$env:DISCOVERY_PRODUCT_ID="<product-id>"
+$env:DISCOVERY_RETAILER_ID="<retailer-id>"
+$env:DISCOVERY_MAX_PRODUCTS="1"
+$env:TRACKER_MAX_OFFERS="5"
+npm run pipeline:production
+```
+
+Run that only after confirming the private DB path, backup path, source terms, and retailer request policy. For local proof without network access, use `npm run smoke:base44`.
+
 ## Price Verification Workflow
 
 Current catalog prices are seed/demo data. BuildWise intentionally blanks public price fields and hides price history until price records or snapshots include verified price status metadata.
@@ -182,11 +269,30 @@ That means Base44 can show verified retailer links while prices remain blank or 
 
 - `DB_FILE`: path to `db.json`. Defaults to `db.json`.
 - `PORT`: public API port. Defaults to `8080`.
+- `API_HOST`: bind host for the public API. Defaults to `0.0.0.0`.
+- `PUBLIC_API_BASE_URL`: deployed API base URL used in docs/deployment.
+- `CORS_ALLOWED_ORIGINS`: preferred comma-separated CORS allowlist for production API calls.
 - `BASE44_ALLOWED_ORIGINS`: comma-separated CORS allowlist for the public API.
 - `PUBLIC_API_RATE_LIMIT_PER_MINUTE`: optional API rate limit. Defaults to `120`.
 - `BUILDWISE_REPORT_EMAIL`: report recipient.
 - `BUILDWISE_DB_GPG_PASSPHRASE`: passphrase for decrypting `buildwise_private/db.json.gpg` in GitHub Actions.
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`: SMTP settings for report email.
+
+Retailer ingestion variables:
+
+- `PIPELINE_MODE=production_sync`: runs the production ingestion/export/report sequence.
+- `DISCOVERY_MODE=auto|file|hybrid`: controls autonomous discovery, candidate-file fallback, or both. Defaults to `auto`.
+- `DISCOVERY_CANDIDATE_FILE`: reviewed CSV/JSON candidate file to verify.
+- `DISCOVERY_SEARCH_FIXTURE_DIR`: local search-result fixtures for tests and smoke runs.
+- `DISCOVERY_SEARCH_PROVIDER_FILE`: optional approved search-provider result fixture/file.
+- `DISCOVERY_MAX_PRODUCTS`: caps product coverage review rows. Defaults to `25`.
+- `DISCOVERY_TARGET_OFFERS_PER_PRODUCT`: desired retailer coverage per product. Defaults to `3`.
+- `DISCOVERY_RETAILERS`: comma-separated retailer IDs/names to include.
+- `DISCOVERY_STALE_HOURS`: age threshold for refreshing verified offers. Defaults to 30 days.
+- `INGESTION_ALLOW_LIVE_FETCH`: defaults to `false`; enables direct candidate page fetches only when approved.
+- `AUTO_PROMOTE_MIN_SCORE`: defaults to `90`.
+- `AUTO_PROMOTE=true`: allows exact/strong matches to promote only when `WRITE=true`.
+- `WRITE=true`: the required database mutation gate.
 
 ## Safe Commands
 

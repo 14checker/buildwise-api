@@ -82,3 +82,37 @@ The report is designed to be readable by Caleb, a partner reviewer, and Claude.
 The reporting model reserves structure for future live events such as URL candidates found, approved imports completed, connector checks completed, price updates completed, public export blocks, Base44 readiness changes, and critical safety failures.
 
 Those event reports are placeholders only in the current branch. They do not enable scraping, URL imports, retailer API calls, or db mutation.
+
+## Retailer Ingestion Pipeline
+
+The ingestion pipeline is the controlled path for turning reviewed retailer product-page candidates into verified BuildWise offers.
+
+Architecture:
+
+1. `ingestion_config.js` centralizes environment variables and blocks unsafe flag combinations.
+2. `discovery_sources/` discovers candidate URLs through retailer search fixtures/live hooks, approved search-provider files, or candidate-file fallback.
+3. `retailer_adapters/` validates retailer domains and extracts page identity from product pages.
+4. `candidate_verification.js` scores product identity evidence and blocks hard conflicts.
+5. `retailer_ingestion.js` produces coverage review rows, discovers candidates, evaluates candidate URLs, and optionally promotes matches.
+6. `verify_candidates.js` exposes the workflow as a CLI.
+7. `pipeline_orchestrator.js` sequences backup, migration, validation, discovery, verification, tracker, exports, and reports.
+8. `scheduler.js` can run the pipeline on intervals while preventing overlapping write-capable jobs.
+
+Discovery modes:
+
+- `DISCOVERY_MODE=auto`: generate retailer-specific queries and run configured autonomous search sources.
+- `DISCOVERY_MODE=file`: use only `DISCOVERY_CANDIDATE_FILE`.
+- `DISCOVERY_MODE=hybrid`: run autonomous discovery and include candidate-file rows.
+
+Normal production behavior is `auto`; a candidate CSV is optional and should not be required for ongoing operation.
+
+Automatic promotion is intentionally narrow. A candidate can promote only when:
+
+- `WRITE=true`
+- `AUTO_PROMOTE=true`
+- the URL is a direct retailer product page on the expected domain
+- page identity can be extracted
+- there are no hard conflicts
+- the match is exact by MPN/SKU or strong enough by model/category identity
+
+The public API and exports never expose `retailer_url_candidates`, scoring reasons, source URLs, admin queues, scrape logs, or review metadata. Promoted offers still pass through `public_serializers.js` before becoming public.

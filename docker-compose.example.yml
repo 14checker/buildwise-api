@@ -1,0 +1,37 @@
+services:
+  buildwise-api:
+    build: .
+    command: npm start
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      API_HOST: 0.0.0.0
+      DB_FILE: /data/db.json
+      CORS_ALLOWED_ORIGINS: https://<base44-app-origin>
+      PUBLIC_API_BASE_URL: https://<buildwise-api-host>
+    ports:
+      - "8080:8080"
+    volumes:
+      - buildwise-data:/data
+
+  buildwise-worker:
+    build: .
+    command: npm run scheduler
+    environment:
+      NODE_ENV: production
+      DB_FILE: /data/db.json
+      PIPELINE_MODE: production_sync
+      DISCOVERY_MODE: auto
+      WRITE: "true"
+      AUTO_PROMOTE: "true"
+      DISCOVERY_DRY_RUN: "false"
+      PROMOTE_DRY_RUN: "false"
+      TRACKER_DRY_RUN: "false"
+      PRODUCTION_SYNC_EVERY_MINUTES: "1440"
+      RUN_ON_START: "false"
+      CORS_ALLOWED_ORIGINS: https://<base44-app-origin>
+    volumes:
+      - buildwise-data:/data
+
+volumes:
+  buildwise-data:

@@ -68,3 +68,21 @@ They can help diagnose data coverage, but they weaken production safety. Never e
 ## Public Output Rule
 
 If a field is not clearly safe and useful for a shopper-facing app, leave it out or blank it until it is verified.
+
+## Retailer Ingestion Safety
+
+The automated ingestion workflow is allowed to prepare and score candidate retailer URLs, but it is not allowed to make public data on weak evidence.
+
+Promotion blockers include:
+
+- wrong retailer domain
+- search or category URL
+- dead or error page
+- MPN, SKU, CPU model, category, or capacity conflict
+- bundle, refurbished, used, open-box, OEM, tray, or anniversary variant mismatch
+- marketplace seller when marketplace is not explicitly allowed
+- missing page identity when live fetch is disabled
+
+Candidate records and match diagnostics are internal-only. Public outputs may include the verified retailer URL after promotion, but must not expose scores, hard-conflict notes, reviewer notes, source URLs, or candidate-table rows.
+
+Price data remains separately gated. A verified URL does not make the price verified.

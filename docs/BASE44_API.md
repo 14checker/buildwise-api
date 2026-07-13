@@ -20,6 +20,8 @@ Returns a simple service health response.
 
 Returns public export counts, verification counts, hidden data counts, warnings, data mode, and db hash.
 
+When served by the live public API, `base44_update_mode` is `api_live` when public data is safe to pull.
+
 ### `GET /public/products`
 
 Returns public products that have at least one verified public-safe offer by default.
@@ -71,6 +73,43 @@ Returns verified public-safe price history for one product.
 
 Searches public products and matching public offers. Search results are limited to already-public data.
 
+## Public Alias Routes
+
+The API also exposes app-friendly aliases that return the same public-safe serializer output:
+
+- `GET /categories`
+- `GET /brands`
+- `GET /retailers`
+- `GET /products`
+- `GET /products/:product_id`
+- `GET /products/:product_id/specs`
+- `GET /products/:product_id/offers`
+- `GET /products/:product_id/price-history`
+- `GET /search/products?q=<query>`
+- `GET /specs`
+- `GET /offers`
+- `GET /offers?product_id=<id>`
+- `GET /offers/:retailer_offer_id/price-history`
+- `GET /deals`
+
+These aliases do not expose more data than the `/public/*` routes. `GET /deals` returns only offers with verified public price fields, so it may be empty while pricing is still hidden.
+
+## Filters and Pagination
+
+For backwards compatibility, list endpoints return arrays. Pagination metadata is returned through headers:
+
+- `X-Total-Count`
+- `X-Result-Count`
+- `X-Limit`
+- `X-Offset`
+- `X-Has-More`
+
+Products support `category_id`, `brand_id`, `brand`, `search`, `has_offers`, `in_stock`, `min_price`, `max_price`, `sort`, `limit`, and `offset`.
+
+Offers support `product_id`, `retailer_id`, `availability`, `condition`, `sort`, `limit`, and `offset`.
+
+Deals support `category_id`, `brand_id`, `brand`, `retailer_id`, `availability`, `sort`, `limit`, and `offset`.
+
 ## Security Model
 
 - The GitHub repo stays private.
@@ -80,6 +119,7 @@ Searches public products and matching public offers. Search results are limited 
 - Base44 does not call the raw GitHub private repo.
 - Raw `db.json` is never served.
 - Affiliate URLs, source URLs, URL review metadata, users, watchlists, alerts, admin queues, scrape errors, and compliance logs are not exposed.
+- Retailer ingestion candidate rows, match scores, hard-conflict notes, and review diagnostics are not exposed.
 
 ## Environment Variables
 

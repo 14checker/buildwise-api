@@ -1,7 +1,7 @@
 const core = require("./buildwise_backend_core");
 
 const DB_FILE = process.env.DB_FILE || "db.json";
-const WRITE = String(process.env.WRITE || "true").toLowerCase() !== "false";
+const WRITE = String(process.env.WRITE || "false").toLowerCase() === "true";
 const MIN_SIMILARITY = Number(process.env.MIN_SIMILARITY || 0.72);
 
 const STOPWORDS = new Set([

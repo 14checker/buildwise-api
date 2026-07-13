@@ -206,7 +206,7 @@ function buildBase44Readiness(safety, options = {}) {
 
   return {
     base44_ready: ready,
-    base44_update_mode: ready ? (apiSmokePassed ? "api_ready" : "csv_ready") : "blocked",
+    base44_update_mode: ready ? (options.publicApiLive ? "api_live" : apiSmokePassed ? "api_ready" : "csv_ready") : "blocked",
     base44_should_pull: ready,
     base44_blocked_reason: ready ? null : "public_export_safety_or_export_failure"
   };
@@ -255,9 +255,15 @@ function buildPublicStatus(db, options = {}) {
   const hiddenPlaceholderOfferCount = countHiddenPlaceholderOffers(db);
   const hiddenSeedPriceCount = countHiddenSeedPrices(db);
   const totalOffers = (db.retailer_offers || []).length;
+  const latestPipelineRun = (db.pipeline_runs || [])
+    .slice()
+    .sort((a, b) => new Date(b.finished_at || b.started_at || 0) - new Date(a.finished_at || a.started_at || 0))[0] || null;
 
   const metrics = {
     generated_at: options.generatedAt || new Date().toISOString(),
+    data_last_updated_at: latestPipelineRun?.finished_at || latestPipelineRun?.started_at || null,
+    last_successful_pipeline_run_at: latestPipelineRun?.status === "complete" ? latestPipelineRun.finished_at || latestPipelineRun.started_at || null : null,
+    pipeline_status: latestPipelineRun?.status || "unknown",
     products_count: rows.products.length,
     retailer_offers_count: rows.retailer_offers.length,
     retailers_count: rows.retailers.length,
